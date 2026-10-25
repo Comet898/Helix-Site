@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser</title>
+<style>
+  :root { color-scheme: light dark; --bg:#ffffff; --surf:#f2f3f6; --tabbar:#e4e7ed; --fg:#171a20; --mut:#667085; --bd:#d8dce4; --ac:#2f5fe8; --ok:#1f9d57; --bad:#d64545; --warn:#c48a10; --sh:0 10px 30px rgba(15,20,35,.18); }
+  @media (prefers-color-scheme: dark) { :root { --bg:#181b21; --surf:#222630; --tabbar:#0f1115; --fg:#e8ebf1; --mut:#98a1b3; --bd:#2f3541; --ac:#7a9bff; --ok:#43c37b; --bad:#ff7a7a; --warn:#e0b04a; --sh:0 10px 30px rgba(0,0,0,.5); } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  svg { display: block; }
+  /* tab strip */
+  #tabs { display: flex; align-items: flex-end; gap: 2px; padding: 8px 8px 0; background: var(--tabbar); }
+  #tablist { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .tab { display: flex; align-items: center; gap: 8px; width: 200px; flex: 0 0 auto; height: 34px; padding: 0 8px 0 14px; border-radius: 9px 9px 0 0; cursor: pointer; color: var(--mut); transition: background .12s; }
+  .tab:hover { background: color-mix(in srgb, var(--bg) 45%, transparent); }
+  .tab.on { background: var(--bg); color: var(--fg); }
+  .tab span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .tab b { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--mut); }
+  .tab b:hover { background: var(--bd); color: var(--fg); }
+  #newtab { width: 30px; height: 30px; margin: 0 0 3px 4px; }
+  /* toolbar */
+  #toolbar { display: flex; align-items: center; gap: 4px; padding: 7px 10px; background: var(--bg); border-bottom: 1px solid var(--bd); position: relative; }
+  .ib { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--fg); cursor: pointer; flex: none; }
+  .ib:hover:not(:disabled) { background: var(--surf); }
+  .ib:disabled { opacity: .35; cursor: default; }
+  #omni { flex: 1; min-width: 0; height: 36px; margin: 0 6px; padding: 0 16px; border: 1px solid transparent; border-radius: 18px; background: var(--surf); outline: none; }
+  #omni:focus { border-color: var(--ac); background: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent); }
+  #pill { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; margin-right: 4px; border-radius: 14px; background: var(--surf); color: var(--mut); font-size: 12px; white-space: nowrap; cursor: default; }
+  #pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--mut); }
+  #pill.ok i { background: var(--ok); } #pill.bad i { background: var(--bad); } #pill.chk i { background: var(--warn); }
+  /* settings popover */
+  #settings { max-height: calc(100vh - 70px); overflow-y: auto; position: absolute; right: 10px; top: 52px; z-index: 20; width: min(360px, calc(100% - 20px)); padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--bg); border: 1px solid var(--bd); border-radius: 12px; box-shadow: var(--sh); }
+  #settings[hidden] { display: none; }
+  #settings h3 { margin: 0; font-size: 15px; }
+  #settings label { display: flex; flex-direction: column; gap: 5px; color: var(--mut); font-size: 12px; }
+  #settings label.chk { flex-direction: row; align-items: center; gap: 6px; }
+  #settings textarea { padding: 8px 10px; color: var(--fg); background: var(--surf); border: 1px solid var(--bd); border-radius: 8px; outline: none; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
+  #settings input[type=checkbox] { height: auto; }
+  #settings input, #settings select { height: 34px; padding: 0 10px; color: var(--fg); background: var(--surf); border: 1px solid var(--bd); border-radius: 8px; outline: none; }
+  #settings input:focus, #settings select:focus { border-color: var(--ac); }
+  #settings .row { display: flex; align-items: center; gap: 10px; }
+  .btn { height: 32px; padding: 0 14px; border: 1px solid var(--bd); border-radius: 8px; background: var(--surf); cursor: pointer; }
+  .btn:hover { border-color: var(--ac); }
+  #wispnote, .hint { color: var(--mut); font-size: 12px; margin: 0; }
+  #status { padding: 3px 14px; font-size: 12px; color: var(--mut); background: var(--surf); border-bottom: 1px solid var(--bd); }
+  #status:empty { display: none; }
+  /* content */
+  #stage { position: relative; flex: 1; min-height: 0; background: var(--bg); }
+  .page { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+  .page[hidden], #ntp[hidden] { display: none; }
+  #ntp { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 24px; }
+  #ntp h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -.01em; }
+  #ntpq { width: min(580px, 100%); height: 48px; padding: 0 22px; font-size: 16px; border: 1px solid var(--bd); border-radius: 24px; background: var(--surf); outline: none; }
+  #ntpq:focus { border-color: var(--ac); background: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 22%, transparent); }
+  #quick { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  #quick button { height: 36px; padding: 0 16px; border: 1px solid var(--bd); border-radius: 18px; background: var(--bg); cursor: pointer; }
+  #quick button:hover { border-color: var(--ac); color: var(--ac); }
+  #stage:fullscreen { background: #000; }
+  body.embed #tabs, body.embed #toolbar, body.embed #status, body.embed #ntp { display: none !important; }
+  @media (max-width: 640px) { #pill span { display: none; } .tab { width: 150px; } }
+  /* ---- polish + logs ---- */
+  :focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }
+  .ib { transition: background .12s; }
+  .tab.on { box-shadow: inset 0 2px 0 var(--ac); }
+  #ntp { background: radial-gradient(1100px 480px at 50% -8%, color-mix(in srgb, var(--ac) 11%, transparent), transparent); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+  #settings { width: min(390px, calc(100% - 20px)); padding: 0; gap: 0; border-radius: 14px; }
+  #settings .sh { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 10px 16px; background: var(--bg); border-bottom: 1px solid var(--bd); }
+  #settings section { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--bd); }
+  #settings section:last-child { border-bottom: 0; }
+  #settings h4 { margin: 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--mut); }
+  #settings details summary { cursor: pointer; color: var(--mut); font-size: 12px; }
+  #settings details p { margin-top: 8px; }
+  #logs { position: fixed; left: 0; right: 0; bottom: 0; height: 42vh; min-height: 190px; z-index: 40; display: flex; flex-direction: column; background: var(--bg); border-top: 1px solid var(--bd); box-shadow: 0 -8px 24px rgba(0,0,0,.18); }
+  #logs[hidden] { display: none; }
+  #logbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--bd); background: var(--surf); flex-wrap: wrap; }
+  #logbar b { font-size: 13px; margin-right: auto; }
+  #logbar select, #logbar input { height: 30px; padding: 0 8px; border: 1px solid var(--bd); border-radius: 8px; background: var(--bg); color: var(--fg); outline: none; }
+  #logbar .btn { height: 30px; padding: 0 10px; }
+  #loglist { flex: 1; overflow: auto; padding: 6px 12px; font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; }
+  #loglist div { white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid color-mix(in srgb, var(--bd) 45%, transparent); }
+  #loglist .t { color: var(--mut); } #loglist .s { color: var(--ac); }
+  #loglist .error { color: var(--bad); } #loglist .warn { color: var(--warn); } #loglist .net .m { color: var(--mut); }
+  @media (max-width: 640px) { #logs { height: 62vh; } }
+</style>
+</head>
+<body>
+<div id="tabs"><div id="tablist"></div><button id="newtab" class="ib" title="New tab" aria-label="New tab"></button></div>
+<div id="toolbar">
+  <button id="back" class="ib" title="Back" aria-label="Back" disabled></button>
+  <button id="fwd" class="ib" title="Forward" aria-label="Forward" disabled></button>
+  <button id="reload" class="ib" title="Reload" aria-label="Reload"></button>
+  <button id="home" class="ib" title="New tab page" aria-label="Home"></button>
+  <input id="omni" type="text" placeholder="Search or enter address" autocomplete="off" spellcheck="false" autofocus>
+  <div id="pill" class="chk" title="Checking connection"><i></i><span>Checking</span></div>
+  <button id="full" class="ib" title="Fullscreen" aria-label="Fullscreen"></button>
+  <button id="logbtn" class="ib" title="Logs" aria-label="Logs"></button>
+  <button id="gear" class="ib" title="Settings" aria-label="Settings"></button>
+  <div id="settings" hidden>
+    <div class="sh"><h3>Settings</h3><button id="setclose" class="ib" aria-label="Close settings"></button></div>
+    <section><h4>Browsing</h4>
+      <label>Search engine <select id="engine"></select></label>
+      <label>Engine <select id="mode"><option value="auto">Auto</option><option value="sj">Scramjet (best compatibility, needs https or localhost)</option><option value="sw">Lite service worker (needs localhost or https)</option><option value="hosted">Hosted engine (your GitHub Pages link)</option><option value="direct">Single-file (works from file://)</option></select></label>
+      <label>Browser identity <select id="ua"><option value="win">Chrome 141 on Windows</option><option value="mac">Chrome 141 on macOS</option><option value="linux">Chrome 141 on Linux</option><option value="off">Do not spoof</option></select></label>
+      <label class="chk"><input id="guard" type="checkbox"> Ask before closing this tab</label>
+    </section>
+    <section><h4>Connection</h4>
+      <label>Transport <select id="transport"><option value="epoxy">epoxy (default)</option><option value="libcurl">libcurl</option></select></label>
+      <label>Preferred Wisp server <input id="wisp" type="text" placeholder="wss://your-server.onrender.com/" spellcheck="false"></label>
+      <label>Fallback servers, one per line <textarea id="wisplist" rows="4" spellcheck="false"></textarea></label>
+      <div class="row"><button id="testwisp" class="btn">Test connection</button><span id="wispnote"></span></div>
+      <details><summary>About Wisp servers</summary><p class="hint">If the preferred server is unreachable, the fallbacks are tried at the same time and the first to answer is used. Public servers are run by volunteers and go offline a lot. Most reliable: deploy the included wisp-server folder and paste its wss:// address in the first box.</p></details>
+    </section>
+    <section><h4>Hosted site</h4>
+      <label>GitHub Pages link <input id="hosted" type="text" placeholder="https://name.github.io/repo/" spellcheck="false"></label>
+      <div class="row"><button id="openhosted" class="btn">Open hosted version</button></div>
+      <p class="hint">Opened from a file, this page runs the engine from that link in the background.</p>
+    </section>
+    <section><h4>Troubleshooting</h4>
+      <div class="row"><button id="openlogs" class="btn">Open logs</button><button id="cleardata" class="btn">Clear saved site data</button></div>
+    </section>
+  </div>
+</div>
+<div id="status"></div>
+<div id="stage">
+  <div id="ntp"><h1>Search the web</h1><input id="ntpq" type="text" placeholder="Search or enter address" autocomplete="off"><div id="quick"></div></div>
+</div>
+
+<div id="logs" hidden>
+  <div id="logbar"><b>Logs</b>
+    <select id="logfilter"><option value="all">All</option><option value="problems">Problems</option><option value="net">Network</option><option value="engine">Engine</option></select>
+    <input id="logq" type="search" placeholder="Filter text">
+    <button id="logcopy" class="btn">Copy</button><button id="logsave" class="btn">Save</button><button id="logclear" class="btn">Clear</button><button id="logx" class="ib" aria-label="Close logs"></button>
+  </div>
+  <div id="loglist"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const ICON = {
+  back: '<path d="M15 6l-6 6 6 6"/>', fwd: '<path d="M9 6l6 6-6 6"/>',
+  reload: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/>',
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/>',
+  gear: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  logs: '<path d="M5 6h14M5 12h14M5 18h9"/>', plus: '<path d="M12 5v14M5 12h14"/>', close: '<path d="M7 7l10 10M17 7L7 17"/>'
+};
+const svg = (n, s) => '<svg viewBox="0 0 24 24" width="' + (s || 18) + '" height="' + (s || 18) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[n] + '</svg>';
+for (const [id, n] of [["logbtn", "logs"], ["setclose", "close"], ["logx", "close"], ["back", "back"], ["fwd", "fwd"], ["reload", "reload"], ["home", "home"], ["gear", "gear"], ["full", "full"], ["newtab", "plus"]]) $(id).innerHTML = svg(n);
+
+const ENGINES = {
+  ddg: ["DuckDuckGo", "https://html.duckduckgo.com/html/?q="], bing: ["Bing", "https://www.bing.com/search?q="],
+  google: ["Google", "https://www.google.com/search?q="], brave: ["Brave", "https://search.brave.com/search?q="]
+};
+const DEFAULT_WISPS = ["wss://wisp.mercurywork.shop/", "wss://anura.pro/", "wss://wisp.rhw.one/wisp/", "wss://pgis-wisp.onrender.com/", "wss://pgis-wisp-2.onrender.com/"];
+const normW = u => { u = (u || "").trim(); return u && !u.endsWith("/") ? u + "/" : u; };
+const wispList = () => $("wisplist").value.split(/\s+/).filter(x => /^wss?:\/\//i.test(x)).map(normW);
+const wispVal = () => normW($("wisp").value) || wispList()[0] || "";
+const tmo = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
+const QUICK = [["Wikipedia", "https://en.wikipedia.org/"], ["DuckDuckGo", "https://html.duckduckgo.com/html/"], ["itch.io games", "https://itch.io/games/html5"], ["Internet Archive", "https://archive.org/"]];
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+const PREFIX = new URL("service/", location.href).pathname;
+const EMBED = new URLSearchParams(location.search).has("embed");
+if (EMBED) document.body.classList.add("embed");
+/* ---------- logs ---------- */
+const LOGS = [], LOGMAX = 4000;
+const escL = x => String(x).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtT = t => new Date(t).toLocaleTimeString([], { hour12: false }) + "." + String(t % 1000).padStart(3, "0");
+const lineEl = e => { const d = document.createElement("div"); d.className = e.lvl; d.innerHTML = '<span class="t">' + fmtT(e.t) + '</span> <span class="s">[' + escL(e.src) + ']</span> <span class="m">' + escL(e.msg) + '</span>'; return d; };
+const logOK = e => {
+  const f = $("logfilter").value, q = $("logq").value.toLowerCase();
+  if (f === "problems" && e.lvl !== "error" && e.lvl !== "warn") return false;
+  if (f === "net" && e.lvl !== "net" && !/^(net|page)/.test(e.src)) return false;
+  if (f === "engine" && !/^(engine|wisp|sj|app|hosted)/.test(e.src)) return false;
+  return !q || (e.src + " " + e.msg).toLowerCase().includes(q);
+};
+function log(lvl, src, msg) {
+  const e = { t: Date.now(), lvl, src, msg: String(msg).slice(0, 2000) };
+  LOGS.push(e); if (LOGS.length > LOGMAX) LOGS.shift();
+  if (EMBED) { try { parent.postMessage({ hz: 1, log: e }, "*"); } catch (x) {} }
+  const box = $("loglist");
+  if (!$("logs").hidden && logOK(e)) { const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 30; box.appendChild(lineEl(e)); if (box.children.length > LOGMAX) box.firstChild.remove(); if (stick) box.scrollTop = box.scrollHeight; }
+}
+function drawLogs() { const box = $("loglist"); box.textContent = ""; const f = document.createDocumentFragment(); LOGS.filter(logOK).slice(-1500).forEach(e => f.appendChild(lineEl(e))); box.appendChild(f); box.scrollTop = box.scrollHeight; }
+const showLogs = v => { $("logs").hidden = !v; if (v) drawLogs(); };
+$("logbtn").onclick = () => showLogs($("logs").hidden);
+$("logx").onclick = () => showLogs(false);
+$("openlogs").onclick = () => { $("settings").hidden = true; showLogs(true); };
+$("setclose").onclick = () => { $("settings").hidden = true; };
+$("logfilter").onchange = drawLogs; $("logq").oninput = drawLogs;
+$("logclear").onclick = () => { LOGS.length = 0; drawLogs(); };
+const logText = () => LOGS.map(e => fmtT(e.t) + " [" + e.src + "] " + e.lvl.toUpperCase() + " " + e.msg).join("\n");
+$("logcopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(logText()); } catch (e) { const ta = document.createElement("textarea"); ta.value = logText(); document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  $("logcopy").textContent = "Copied"; setTimeout(() => { $("logcopy").textContent = "Copy"; }, 1200);
+};
+$("logsave").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([logText()], { type: "text/plain" })); a.download = "browser-logs.txt"; a.click(); };
+for (const k of ["log", "info", "warn", "error"]) {
+  const o = console[k].bind(console);
+  console[k] = (...a) => { o(...a); try { log(k === "error" ? "error" : k === "warn" ? "warn" : "info", "console", a.map(x => typeof x === "string" ? x : (x && x.stack) || (() => { try { return JSON.stringify(x); } catch (e) { return String(x); } })()).join(" ")); } catch (e) {} };
+}
+window.addEventListener("error", e => log("error", "app", e.message + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : "")));
+window.addEventListener("unhandledrejection", e => log("error", "app", "Unhandled rejection: " + (e.reason && e.reason.message || e.reason)));
+try { new BroadcastChannel("hzlog").onmessage = e => { const d = e.data; if (d && d.msg) log(d.lvl || "net", d.src || "net", d.msg); }; } catch (e) {}
+function watchFrame(fr, label) {
+  const hook = w => { try {
+    if (!w || w.__hzw) return; w.__hzw = 1; const doc = w.document;
+    w.addEventListener("error", e => log("error", label, (e.message || "error") + (e.filename ? " @ " + e.filename.split("/").pop() + ":" + e.lineno : "")));
+    w.addEventListener("unhandledrejection", e => log("error", label, "Unhandled rejection: " + (e.reason && e.reason.message || e.reason)));
+    doc.addEventListener("error", e => { const el = e.target; if (el && el.tagName && /^(IMG|SCRIPT|LINK|IFRAME|VIDEO|AUDIO|SOURCE)$/.test(el.tagName)) log("warn", label, "resource failed: <" + el.tagName.toLowerCase() + "> " + (el.src || el.href || "")); }, true);
+    doc.addEventListener("load", e => { const el = e.target; if (el && el.tagName === "IFRAME") { log("net", label, "frame loaded: " + (el.getAttribute("src") || "(inline)").slice(0, 200)); try { hook(el.contentWindow); } catch (x) {} } }, true);
+    for (const k of ["warn", "error"]) { const o = w.console[k].bind(w.console); w.console[k] = (...a) => { o(...a); log(k, label + ":console", a.map(String).join(" ").slice(0, 600)); }; }
+    doc.querySelectorAll("iframe").forEach(f => { try { hook(f.contentWindow); } catch (x) {} });
+  } catch (e) {} };
+  fr.addEventListener("load", () => { let u = "?"; try { u = fr.contentWindow.location.href; } catch (e) {} log("net", label, "page loaded: " + u.slice(0, 300)); hook(fr.contentWindow); });
+}
+const UA_LIST = { win: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", linux: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" };
+const UAS = () => UA_LIST[$("ua").value] || navigator.userAgent;
+const cfgObj = () => ({ wisp: wispVal(), wisplist: $("wisplist").value, ua: $("ua").value, transport: $("transport").value });
+
+let tabs = [], active = null, seq = 0, activeWisp = null, useDirect = false, curWisp = null;
+
+for (const [k, v] of Object.entries(ENGINES)) $("engine").add(new Option(v[0], k));
+$("engine").value = store.get("engine", "ddg");
+$("wisp").value = store.get("wisp2", "");
+$("transport").value = store.get("transport", "epoxy");
+$("ua").value = store.get("ua", "win");
+$("mode").value = store.get("mode", "auto");
+$("wisplist").value = store.get("wisplist3", DEFAULT_WISPS.join("\n"));
+$("hosted").value = store.get("hosted", "");
+$("wisplist").onchange = () => { store.set("wisplist3", $("wisplist").value); curWisp = null; };
+$("hosted").onchange = () => store.set("hosted", $("hosted").value.trim());
+const hostedURL = () => {
+  try {
+    const u = new URL($("hosted").value.trim());
+    if (!(u.protocol === "https:" || (u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname)))) return "";
+    if (!u.pathname.endsWith("/") && !/\.[a-z]+$/i.test(u.pathname)) u.pathname += "/";
+    return u.href;
+  } catch (e) { return ""; }
+};
+$("openhosted").onclick = () => { const h = hostedURL(); if (h) { noGuard = true; location.href = h; } else $("wispnote").textContent = "Enter a valid https link first"; };
+$("engine").onchange = () => store.set("engine", $("engine").value);
+$("wisp").onchange = () => { store.set("wisp2", wispVal()); curWisp = null; };
+$("ua").onchange = () => { store.set("ua", $("ua").value); log("info", "app", "identity set to " + $("ua").value); if (sjC) regSW().then(() => log("info", "sj", "reload pages to apply the new identity")).catch(e => log("error", "sj", e.message)); };
+$("transport").onchange = () => { store.set("transport", $("transport").value); sjKey = ""; };
+$("mode").onchange = () => { store.set("mode", $("mode").value); modeNote(); };
+let noGuard = false;
+$("guard").checked = store.get("guard", "1") === "1";
+$("guard").onchange = () => store.set("guard", $("guard").checked ? "1" : "0");
+window.addEventListener("beforeunload", e => { if (EMBED || noGuard || !$("guard").checked) return; e.preventDefault(); e.returnValue = ""; });
+$("cleardata").onclick = async () => {
+  if (!confirm("Delete saved cookies and site data for every site?")) return;
+  jar.clear(); try { Object.keys(localStorage).filter(k => k.startsWith("hz:") || k === "hzjar").forEach(k => localStorage.removeItem(k)); sessionStorage.clear(); } catch (e) {}
+  try { for (const d of await indexedDB.databases()) indexedDB.deleteDatabase(d.name); } catch (e) {}
+  try { for (const k of await caches.keys()) caches.delete(k); } catch (e) {}
+  log("info", "app", "site data cleared"); location.reload();
+};
+$("gear").onclick = e => { e.stopPropagation(); $("settings").hidden = !$("settings").hidden; };
+document.addEventListener("click", e => { if (!$("settings").hidden && !$("settings").contains(e.target)) $("settings").hidden = true; });
+window.addEventListener("blur", () => { $("settings").hidden = true; });
+for (const [label, url] of QUICK) { const b = document.createElement("button"); b.textContent = label; b.onclick = () => go(active, url); $("quick").append(b); }
+
+/* address bar text -> URL or search */
+function resolve(q) {
+  q = q.trim(); if (!q) return "";
+  if (/^https?:\/\//i.test(q)) return q;
+  if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?([\/?#].*)?$/i.test(q)) return "http://" + q;
+  if (/^[^\s\/?#]+\.[a-z]{2,}(:\d+)?([\/?#]\S*)?$/i.test(q)) return "https://" + q;
+  return ENGINES[$("engine").value][1] + encodeURIComponent(q);
+}
+
+/* Wisp: check the configured server, fall back to others if it is down */
+function setPill(cls, text, title) { $("pill").className = cls; $("pill").lastChild.textContent = text; $("pill").title = title || text; }
+function probe(url, ms) {
+  return new Promise(res => {
+    let ws, done = false;
+    const fin = v => { if (done) return; done = true; try { ws.close(); } catch (e) {} log(v ? "info" : "warn", "wisp", (v ? "handshake ok: " : "no answer: ") + url); res(v); };
+    try { ws = new WebSocket(url); } catch (e) { return res(false); }
+    ws.binaryType = "arraybuffer"; ws.onmessage = () => fin(true); ws.onerror = () => fin(false); ws.onclose = () => fin(false);
+    setTimeout(() => fin(false), ms || 6000);
+  });
+}
+let wispFailAt = 0, wispOK = false;
+async function resolveWisp() {
+  const want = wispVal();
+  if (curWisp && curWisp.want === want) return curWisp.use;
+  if (new URLSearchParams(location.search).has("libcurl")) { curWisp = { want, use: want }; wispOK = true; setPill("ok", "Test mode"); return want; }
+  if (Date.now() - wispFailAt < 60000) return want;
+  setPill("chk", "Checking", "Checking " + want);
+  if (await probe(want, 8000)) { curWisp = { want, use: want }; wispOK = true; setPill("ok", "Connected", "Wisp: " + want); return want; }
+  const others = wispList().filter(x => x !== want);
+  const win = await new Promise(res => {
+    let left = others.length; if (!left) return res(null);
+    others.forEach(w => probe(w, 10000).then(ok => { if (ok) res(w); else if (--left === 0) res(null); }));
+  });
+  if (win) { curWisp = { want, use: win }; wispOK = true; setPill("ok", "Fallback server", "Wisp: " + win); return win; }
+  wispFailAt = Date.now(); wispOK = false;
+  setPill("chk", "Unverified", "Could not confirm any Wisp server from this page. Browsing is still attempted with " + want + ".");
+  return want;
+}
+$("testwisp").onclick = async () => {
+  curWisp = null; wispFailAt = 0; $("wispnote").textContent = "Testing...";
+  const w = await resolveWisp();
+  wispFailAt = 0; $("wispnote").textContent = $("pill").className === "ok" ? "Using " + w : "Could not confirm a server";
+};
+
+/* service worker */
+async function boot(wisp) {
+  if (!("serviceWorker" in navigator) || !window.isSecureContext)
+    throw new Error("Service workers need http://localhost or https. Run: python3 -m http.server 8080 in this folder, then open http://localhost:8080");
+  if (wisp === activeWisp) return;
+  const qs = new URLSearchParams(location.search), extra = {};
+  for (const k of ["libcurl", "acorn"]) if (qs.has(k)) extra[k] = qs.get(k);
+  const reg = await navigator.serviceWorker.register("sw.js?" + new URLSearchParams({ wisp, ...extra }), { scope: "./" });
+  const sw = reg.installing || reg.waiting || reg.active;
+  if (sw.state !== "activated") await new Promise(r => sw.addEventListener("statechange", () => sw.state === "activated" && r()));
+  activeWisp = wisp;
+}
+/* keep the worker (and its Wisp connection) alive during long sessions such as games */
+setInterval(() => { if (activeWisp) fetch(new URL("service/__ping", location.href)).catch(() => {}); }, 20000);
+
+/* ---------- Scramjet engine (service worker in sj/, needs https or localhost) ---------- */
+const loadJs = src => new Promise((res, rej) => { const e = document.createElement("script"); e.src = src; e.onload = res; e.onerror = () => rej(new Error("Could not load " + src + ". Upload the whole sj folder next to index.html.")); document.head.appendChild(e); });
+let sjC = null, sjConn = null, sjKey = "", sjBad = false;
+async function regSW() {
+  const base = new URL("sj/", location.href).pathname;
+  const reg = await navigator.serviceWorker.register(base + "sw.js?ua=" + encodeURIComponent($("ua").value), { scope: base });
+  const sw = reg.installing || reg.waiting || reg.active;
+  if (sw && sw.state !== "activated") await new Promise(r => sw.addEventListener("statechange", () => sw.state === "activated" && r()));
+  log("info", "sj", "service worker active, identity: " + $("ua").value);
+  return reg;
+}
+async function bootSJ(wisp) {
+  if (!swOK()) throw new Error("Scramjet needs https or http://localhost. Host this folder on GitHub Pages, or run: python3 -m http.server 8080");
+  const base = new URL("sj/", location.href).pathname;
+  if (!sjC) {
+    await loadJs(base + "scramjet.all.js"); await loadJs(base + "baremux/index.js");
+    const { ScramjetController } = $scramjetLoadController();
+    const c = new ScramjetController({ prefix: base + "service/",
+      files: { wasm: base + "scramjet.wasm.wasm", all: base + "scramjet.all.js", sync: base + "scramjet.sync.js" },
+      flags: { cleanErrors: true, allowInvalidJs: true, allowFailedIntercepts: true } });
+    await c.init();
+    log("info", "sj", "scripts loaded, controller ready"); await regSW();
+    sjConn = new BareMux.BareMuxConnection(base + "baremux/worker.js");
+    sjC = c;
+  }
+  const tr = $("transport").value, key = tr + "|" + wisp;
+  if (key !== sjKey) { await sjConn.setTransport(base + "transport/" + tr + ".mjs", [{ wisp, websocket: wisp }]); sjKey = key; log("info", "sj", "transport " + tr + " via " + wisp); }
+}
+async function goSJ(t, url) {
+  t.sj = true; t.direct = false; t.hosted = false; t.url = url; t.title = "Loading...";
+  if (t === active) { $("omni").value = url; $("ntp").hidden = true; t.frame.hidden = false; }
+  render(); $("status").textContent = "Starting Scramjet ...";
+  try {
+    const w = await Promise.race([resolveWisp(), tmo(30000, "Wisp check timed out")]);
+    if (!wispOK) { const er = new Error("No working Wisp server"); er.noWisp = true; throw er; }
+    await Promise.race([bootSJ(w), tmo(20000, "Scramjet took too long to start")]);
+  } catch (e) {
+    if (e.noWisp || /Wisp/.test(e.message)) {
+      t.title = "No Wisp server"; render(); $("status").textContent = "No working Wisp server. See the page for the fix.";
+      t.frame.removeAttribute("src"); t.frame.srcdoc = '<body style="font:15px system-ui;padding:40px;max-width:580px;margin:auto;line-height:1.5"><h2>No working Wisp server</h2><p>Every server in your list is offline or blocking you (that is the "error code 7: Could not connect" you saw).</p><p>Fix, about a minute: open the <b>wisp-server</b> folder, run <code>npm install</code> then <code>npm start</code>, then in Settings put <code>ws://localhost:8080/</code> as the Preferred Wisp server and press Test.</p><p>To use it away from your computer, deploy that folder on Render, Railway or Fly and use its <code>wss://</code> address.</p></body>';
+      return;
+    }
+    if ($("mode").value === "auto") { sjBad = true; t.sj = false; $("status").textContent = "Scramjet failed (" + e.message + "), using the lite engine"; return go(t, url); }
+    log("error", "sj", e.message); t.title = "Error"; render(); $("status").textContent = "Error: " + e.message; return;
+  }
+  if (!t.sjf) {
+    t.sjf = sjC.createFrame(t.frame);
+    t.sjf.addEventListener("urlchange", e => { t.url = e.url; if (t === active && document.activeElement !== $("omni")) $("omni").value = t.url; });
+  }
+  t.frame.removeAttribute("srcdoc");
+  $("status").textContent = "Loading " + url;
+  t.frame.addEventListener("load", () => { if (t === active) $("status").textContent = ""; }, { once: true });
+  t.sjf.go(url); navState();
+}
+
+/* tabs */
+function newTab(input) {
+  const f = document.createElement("iframe");
+  f.className = "page"; f.title = "page"; f.hidden = true;
+  f.setAttribute("allow", "fullscreen; autoplay; gamepad; clipboard-write; web-share");
+  $("stage").appendChild(f); watchFrame(f, "page");
+  const t = { id: ++seq, title: "New Tab", url: "", frame: f, hist: [], i: -1, direct: false };
+  tabs.push(t); select(t);
+  if (input) go(t, input); else { $("omni").value = ""; $("omni").focus(); }
+  return t;
+}
+function select(t) {
+  active = t;
+  for (const x of tabs) x.frame.hidden = x !== t || !x.url;
+  $("ntp").hidden = !!t.url;
+  if (document.activeElement !== $("omni") || !t.url) $("omni").value = t.url;
+  render(); navState();
+}
+function closeTab(t) {
+  const i = tabs.indexOf(t); tabs.splice(i, 1); t.frame.remove();
+  if (!tabs.length) return newTab();
+  if (active === t) select(tabs[Math.min(i, tabs.length - 1)]); else render();
+}
+function render() {
+  const list = $("tablist"); list.textContent = "";
+  for (const t of tabs) {
+    const d = document.createElement("div"); d.className = "tab" + (t === active ? " on" : ""); d.title = t.title;
+    const s = document.createElement("span"); s.textContent = t.title;
+    const x = document.createElement("b"); x.innerHTML = svg("close", 12); x.title = "Close tab";
+    x.onclick = e => { e.stopPropagation(); closeTab(t); };
+    d.onclick = () => select(t); d.append(s, x); list.append(d);
+  }
+}
+function modeNote() {
+  const m = $("mode").value;
+  $("status").textContent = (engineFor() === "direct")
+    ? "Single-file mode: pages, scripts, styles and images all load through the proxy. No server needed." : engineFor() === "sj" ? "Scramjet engine" : "";
+}
+const swOK = () => "serviceWorker" in navigator && window.isSecureContext && /^https?:$/.test(location.protocol);
+
+function engineFor() {
+  const m = $("mode").value;
+  if (window.HZ_SINGLE && m === "auto") return hostedURL() ? "hosted" : "direct";
+  if (m === "direct") return "direct";
+  if (m === "hosted") return hostedURL() ? "hosted" : "direct";
+  if (m === "sj") return "sj";
+  if (m === "sw") return "sw";
+  return useDirect ? "direct" : swOK() ? (sjBad ? "sw" : "sj") : hostedURL() ? "hosted" : "direct";
+}
+async function go(t, input, push = true, opts) {
+  const url = resolve(input); if (!url) return;
+  const m = $("mode").value, eng = engineFor();
+  log("info", "engine", "open " + url + " via " + eng);
+  if (eng === "sj") return goSJ(t, url);
+  if (eng === "hosted" && !EMBED) return goHosted(t, url);
+  t.hosted = false; t.ready = false;
+  let direct = (!push && t.direct) || eng === "direct";
+  if (!direct) {
+    try {
+      const want = wispVal();
+      const w = await Promise.race([resolveWisp(), new Promise(r => setTimeout(() => r(want), 3000))]);
+      await boot(w);
+      /* load libcurl in the page too: proxied pages use it for WebSockets */
+      await Promise.race([loadLibcurl().then(() => { if (directWisp !== w) { libcurl.set_websocket(w); directWisp = w; } }), new Promise(r => setTimeout(r, 8000))]).catch(() => {});
+    } catch (e) { if (m === "auto") { useDirect = true; direct = true; } else { $("status").textContent = "Error: " + e.message; return; } }
+  }
+  if (direct) return goDirect(t, url, push, opts);
+  t.direct = false; t.url = url; t.title = "Loading...";
+  if (t === active) { $("omni").value = url; $("ntp").hidden = true; t.frame.hidden = false; }
+  render(); $("status").textContent = "Loading " + url;
+  t.frame.removeAttribute("srcdoc");
+  t.frame.src = new URL("service/" + encodeURIComponent(url), location.href).href;
+  t.frame.onload = () => { if (t === active) $("status").textContent = ""; };
+}
+
+/* ---------- single-file engine: libcurl.js in this page + srcdoc (works from file://) ---------- */
+let lcP = null, directWisp = null;
+function loadLibcurl() {
+  if (lcP) return lcP;
+  lcP = new Promise((res, rej) => {
+    if (window.libcurl && libcurl.ready) return res();
+    document.addEventListener("libcurl_load", () => res(), { once: true });
+    if (window.libcurl) return;
+    const s = document.createElement("script");
+    s.src = new URLSearchParams(location.search).get("libcurl") || "https://cdn.jsdelivr.net/npm/libcurl.js@0.7.1/libcurl_full.js";
+    s.onload = () => { if (window.libcurl && libcurl.ready) res(); };
+    s.onerror = () => { lcP = null; rej(new Error("Could not load libcurl.js from the CDN")); };
+    document.head.appendChild(s);
+  });
+  return lcP;
+}
+const esc = x => String(x).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* script injected into every page: routes fetch/XHR/links/forms through libcurl */
+function directShim(base, id) {
+return '(function(){var B='+JSON.stringify(base)+',P=(function(){var w=window;while(!w.tabNav&&w!==w.parent)w=w.parent;return w})(),T='+id+';'+
+'function abs(u){try{return new URL(u,B).href}catch(e){return u}}'+
+'function nav(u,o,b){P.tabNav(T,u,o,b)}'+
+'window.fetch=function(i,o){var u=(i&&i.url)?i.url:String(i);if(i&&i.url&&!o)o={method:i.method,headers:i.headers};return P.lfetch(abs(u),o)};'+
+'function fire(x,t){var e={type:t,target:x};if(typeof x["on"+t]==="function")x["on"+t](e);((x._l||{})[t]||[]).forEach(function(f){f.call(x,e)})}'+
+'function X(){this.readyState=0;this.status=0;this.statusText="";this.responseText="";this.response=null;this.responseType="";this.withCredentials=false;this.timeout=0;this._h={};this._rh=new Headers()}'+
+'X.prototype.open=function(m,u){this._m=m;this._u=abs(u);this.readyState=1};'+
+'X.prototype.setRequestHeader=function(k,v){this._h[k]=v};'+
+'X.prototype.getResponseHeader=function(k){return this._rh.get(k)};'+
+'X.prototype.getAllResponseHeaders=function(){var s="";this._rh.forEach(function(v,k){s+=k+": "+v+"\\r\\n"});return s};'+
+'X.prototype.overrideMimeType=function(){};X.prototype.abort=function(){};'+
+'X.prototype.addEventListener=function(t,f){this._l=this._l||{};this._l[t]=(this._l[t]||[]).concat(f)};'+
+'X.prototype.removeEventListener=function(){};'+
+'X.prototype.send=function(b){var x=this;P.lfetch(x._u,{method:x._m,headers:x._h,body:b||undefined}).then(function(r){x.status=r.status;x.statusText=r.statusText;x._rh=r.headers;x.responseURL=r.url;'+
+'return x.responseType==="arraybuffer"?r.arrayBuffer():x.responseType==="blob"?r.blob():r.text()}).then(function(d){'+
+'if(x.responseType==="json"){try{d=JSON.parse(d)}catch(e){d=null}}else if(typeof d==="string")x.responseText=d;'+
+'x.response=d;x.readyState=4;fire(x,"readystatechange");fire(x,"load");fire(x,"loadend")}).catch(function(){x.readyState=4;fire(x,"readystatechange");fire(x,"error");fire(x,"loadend")})};'+
+'X.UNSENT=0;X.OPENED=1;X.DONE=4;window.XMLHttpRequest=X;'+
+'window.open=function(u){if(u)nav(abs(u),0,1);return null};'+
+'try{history.pushState=function(){};history.replaceState=function(){}}catch(e){}'+
+'document.addEventListener("click",function(e){if(e.defaultPrevented||e.button)return;var a=e.target.closest&&e.target.closest("a[href]");if(!a)return;var h=a.getAttribute("href");'+
+'if(/^(javascript:|mailto:|tel:|blob:|data:)/i.test(h))return;e.preventDefault();'+
+'if(h.charAt(0)==="#"){var el=document.getElementById(h.slice(1));if(el)el.scrollIntoView();return}nav(a.href,0,a.target==="_blank")},false);'+
+'document.addEventListener("submit",function(e){if(e.defaultPrevented)return;var f=e.target;e.preventDefault();var m=(f.getAttribute("method")||"get").toLowerCase(),u=abs(f.getAttribute("action")||B),fd=new URLSearchParams(new FormData(f));'+
+'if(m==="post"){nav(u,{method:"POST",body:fd.toString(),headers:{"Content-Type":"application/x-www-form-urlencoded"}})}else{var q=new URL(u);q.search=fd.toString();nav(q.href)}},false);'+
+'function hk(C,p,k){var d=Object.getOwnPropertyDescriptor(C.prototype,p);if(!d||!d.set)return;Object.defineProperty(C.prototype,p,{get:d.get,set:function(v){var s=this,u=String(v);if(/^(data:|blob:|about:|javascript:|#)/i.test(u)){d.set.call(s,v);return}P.hzAsset(abs(u),k).then(function(r){d.set.call(s,r)})},configurable:true})}'+
+'hk(HTMLImageElement,"src","blob");hk(HTMLScriptElement,"src","js");hk(HTMLLinkElement,"href","css");'+
+'var sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){var t=this.tagName,k=n=="src"?(t=="IMG"?"blob":t=="SCRIPT"?"js":0):n=="href"?(t=="LINK"?"css":0):0;if(k&&!/^(data:|blob:|about:|javascript:|#)/i.test(String(v))){var s=this;P.hzAsset(abs(String(v)),k).then(function(r){sa.call(s,n,r)});return}return sa.apply(this,arguments)};'+
+'var cu=function(){try{var u=new URL(B);u.hash=location.hash;return u}catch(e){return new URL(\"about:blank\")}};'+
+'var L={};[\"href\",\"origin\",\"protocol\",\"host\",\"hostname\",\"port\",\"pathname\",\"search\",\"hash\"].forEach(function(k){Object.defineProperty(L,k,{enumerable:true,get:function(){return cu()[k]},set:function(v){if(k==\"hash\")location.hash=v;else if(k==\"href\")nav(abs(String(v)));else{var u=cu();u[k]=v;nav(u.href)}}})});'+
+'L.assign=function(v){nav(abs(String(v)))};L.replace=L.assign;L.reload=function(){nav(B)};L.toString=function(){return cu().href};L.ancestorOrigins=[];L[Symbol.toPrimitive]=function(){return cu().href};'+
+'window.__hzloc=L;window.__hzL=function(o){return(o===window||o===document||o===top||o===parent)?L:o.location};'+
+'[\"URL\",\"documentURI\",\"baseURI\",\"domain\"].forEach(function(k){try{Object.defineProperty(Document.prototype,k,{get:function(){var u=cu();return k==\"domain\"?u.hostname:u.href},set:function(){},configurable:true})}catch(e){}});'+
+'try{Object.defineProperty(Document.prototype,\"cookie\",{get:function(){return P.hzCookie(B)},set:function(v){P.hzSetCookie(String(v),B)},configurable:true})}catch(e){}'+
+'var WS=function(u,pr){var Lc=P.libcurl;if(!Lc||!Lc.WebSocket)throw new DOMException(\"Proxy transport is not ready\",\"InvalidStateError\");var a=new URL(String(u),B);if(a.protocol==\"http:\")a.protocol=\"ws:\";else if(a.protocol==\"https:\")a.protocol=\"wss:\";return pr===undefined?new Lc.WebSocket(a.href):new Lc.WebSocket(a.href,pr)};WS.CONNECTING=0;WS.OPEN=1;WS.CLOSING=2;WS.CLOSED=3;window.WebSocket=WS;'+
+'(function(){var d=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,\"src\");if(!d||!d.set)return;Object.defineProperty(HTMLIFrameElement.prototype,\"src\",{get:d.get,set:function(v){var s=this,u=abs(String(v));if(!/^https?:/i.test(u)){d.set.call(s,v);return}P.hzFrame(u,T,1).then(function(h){if(h)s.srcdoc=h;else d.set.call(s,u)})},configurable:true})})();'+
+'(function(){function mk(st){var pre=\"hz:\"+new URL(B).origin+\":\";var ks=function(){return Object.keys(st).filter(function(x){return x.indexOf(pre)==0})};var api={getItem:function(k){return st.getItem(pre+k)},setItem:function(k,v){st.setItem(pre+k,v)},removeItem:function(k){st.removeItem(pre+k)},clear:function(){ks().forEach(function(x){st.removeItem(x)})},key:function(i){var a=ks();return a[i]===undefined?null:a[i].slice(pre.length)}};Object.defineProperty(api,\"length\",{get:function(){return ks().length}});return new Proxy(api,{get:function(t,p){if(p in t)return t[p];if(typeof p==\"symbol\")return undefined;return t.getItem(String(p))},set:function(t,p,v){t.setItem(String(p),String(v));return true},deleteProperty:function(t,p){t.removeItem(String(p));return true},has:function(t,p){return p in t||t.getItem(String(p))!==null},ownKeys:function(t){return ks().map(function(x){return x.slice(pre.length)})},getOwnPropertyDescriptor:function(t,p){return t.getItem(String(p))===null?undefined:{value:t.getItem(String(p)),writable:true,enumerable:true,configurable:true}}})}'+
+'try{var l1=mk(window.localStorage),s1=mk(window.sessionStorage);Object.defineProperty(window,\"localStorage\",{get:function(){return l1},configurable:true});Object.defineProperty(window,\"sessionStorage\",{get:function(){return s1},configurable:true})}catch(e){}})();'+
+'})();';
+}
+/* ---------- subresource pipeline: CSS, scripts, images and fonts also go through libcurl/Wisp ---------- */
+let busy = 0; const waitQ = [];
+const slot = () => new Promise(r => { const t = () => busy < 8 ? (busy++, r()) : waitQ.push(t); t(); });
+const freeSlot = () => { busy--; const n = waitQ.shift(); if (n) n(); };
+const acache = new Map();
+const aabs = (u, b) => { try { return new URL(u, b).href; } catch (e) { return u; } };
+const toData = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+async function cssRewrite(css, base) {
+  const re = /url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi;
+  const out = await Promise.all([...css.matchAll(re)].map(async m => {
+    const raw = m[2] !== undefined ? m[2] : m[4];
+    if (!raw || /^(data:|blob:|#)/i.test(raw)) return m[0];
+    const u = aabs(raw, base);
+    return m[4] !== undefined ? '@import "' + await asset(u, "css") + '"' : 'url("' + await asset(u, "data") + '")';
+  }));
+  let i = 0; return css.replace(re, () => out[i++]);
+}
+function asset(u, kind) {
+  const k = kind + "|" + u; if (acache.has(k)) return acache.get(k);
+  const p = (async () => {
+    let r, txt, b, fin = u;
+    await slot();
+    try {
+      r = await lfetch(u);
+      if (r.status >= 400) return u;
+      fin = r.url || u;
+      if (kind === "css" || kind === "js") txt = await r.text(); else b = await r.blob();
+    } catch (e) { return u; } finally { freeSlot(); }
+    if (txt !== undefined) {
+      if (kind === "css") txt = await cssRewrite(txt, fin).catch(() => txt);
+      if (kind === "js") { await loadAcorn().catch(() => {}); txt = rewriteJs(txt); }
+      return URL.createObjectURL(new Blob([txt], { type: kind === "css" ? "text/css" : "text/javascript" }));
+    }
+    return kind === "data" && b.size < 6e6 ? await toData(b) : URL.createObjectURL(b);
+  })();
+  acache.set(k, p); return p;
+}
+window.hzAsset = (u, k) => asset(u, k);
+/* ---------- cookie jar + header handling for the single-file engine ---------- */
+const jar = new Map();
+try { JSON.parse(localStorage.getItem("hzjar") || "[]").forEach(c => jar.set(c.d + "|" + c.p + "|" + c.n, c)); } catch (e) {}
+let jarT; const saveJar = () => { clearTimeout(jarT); jarT = setTimeout(() => { try { localStorage.setItem("hzjar", JSON.stringify([...jar.values()].filter(c => !c.e || c.e > Date.now()))); } catch (e) {} }, 300); };
+function setCk(line, url) {
+  let u; try { u = new URL(url); } catch (e) { return; }
+  const parts = line.split(";"), nv = parts.shift(), i = nv.indexOf("="); if (i < 1) return;
+  const c = { n: nv.slice(0, i).trim(), v: nv.slice(i + 1).trim(), d: u.hostname, h: true, p: "/", e: 0, ho: false };
+  let ma = false;
+  for (const a of parts) {
+    const j = a.indexOf("="), k = (j < 0 ? a : a.slice(0, j)).trim().toLowerCase(), x = j < 0 ? "" : a.slice(j + 1).trim();
+    if (k === "domain" && x) { c.d = x.replace(/^\./, "").toLowerCase(); c.h = false; }
+    else if (k === "path" && x[0] === "/") c.p = x;
+    else if (k === "max-age") { c.e = Date.now() + (+x) * 1000; ma = true; }
+    else if (k === "expires" && !ma) c.e = Date.parse(x) || 0;
+    else if (k === "httponly") c.ho = true;
+  }
+  if (!c.h && u.hostname !== c.d && !u.hostname.endsWith("." + c.d)) return;
+  const key = c.d + "|" + c.p + "|" + c.n;
+  if (c.e && c.e <= Date.now()) jar.delete(key); else jar.set(key, c);
+  saveJar();
+}
+function ckFor(url, js) {
+  let u; try { u = new URL(url); } catch (e) { return ""; }
+  const now = Date.now(), out = [];
+  for (const [k, c] of jar) {
+    if (c.e && c.e <= now) { jar.delete(k); continue; }
+    if (js && c.ho) continue;
+    if (!(c.h ? u.hostname === c.d : (u.hostname === c.d || u.hostname.endsWith("." + c.d)))) continue;
+    if (!u.pathname.startsWith(c.p)) continue;
+    out.push(c.n + "=" + c.v);
+  }
+  return out.join("; ");
+}
+window.hzCookie = base => ckFor(base, true);
+window.hzSetCookie = (line, base) => setCk(line, base);
+async function lfetch(u, o) {
+  o = o || {};
+  const h = { "Accept-Language": navigator.language || "en-US", "User-Agent": UAS() };
+  if (o.headers) (o.headers instanceof Headers ? [...o.headers.entries()] : Object.entries(o.headers)).forEach(([k, v]) => { h[k] = v; });
+  const ck = ckFor(u, false); if (ck && !Object.keys(h).some(k => k.toLowerCase() === "cookie")) h.Cookie = ck;
+  const r = await Promise.race([libcurl.fetch(u, Object.assign({ redirect: "follow" }, o, { headers: h })), tmo(25000, "Timed out. The Wisp server is down or too slow.")]);
+  try { (r.headers.getSetCookie ? r.headers.getSetCookie() : (r.headers.get("set-cookie") || "").split(/,(?=\s*[^;,=\s]+=)/).filter(Boolean)).forEach(c => setCk(c, r.url || u)); } catch (e) {}
+  return r;
+}
+window.lfetch = lfetch;
+/* ---------- JS rewriting (location -> faked location), same rewriter the service worker uses ---------- */
+const JS_PRE = "typeof __hzL==='undefined'&&(self.__hzL=function(o){return o.location},self.__hzloc=self.location);";
+function rewriteJs(src) {
+  if (typeof acorn === "undefined") return src;
+  let ast;
+  try { ast = acorn.parse(src, { ecmaVersion: "latest", sourceType: "script", allowReturnOutsideFunction: true, allowHashBang: true }); }
+  catch (e) { try { ast = acorn.parse(src, { ecmaVersion: "latest", sourceType: "module", allowHashBang: true }); } catch (e2) { return src; } }
+  const edits = [], ids = []; let bound = false;
+  const visit = (n, parent, key) => {
+    if (n.type === "Identifier" && n.name === "location") {
+      const t = parent && parent.type;
+      if (!parent) return;
+      if (t === "MemberExpression" && key === "property" && !parent.computed) return;
+      if ((t === "Property" || t === "MethodDefinition" || t === "PropertyDefinition") && key === "key" && !parent.computed) return;
+      if ((t === "VariableDeclarator" && key === "id") || (/Function/.test(t) && (key === "params" || key === "id")) ||
+          (t === "CatchClause" && key === "param") || (t === "ClassDeclaration" && key === "id")) { bound = true; return; }
+      if (/^(Labeled|Break|Continue|ImportSpecifier|ExportSpecifier)/.test(t)) return;
+      ids.push([n, parent, key]); return;
+    }
+    if (n.type === "MemberExpression" && !n.computed && n.property.name === "location") {
+      const left = parent && parent.type === "AssignmentExpression" && parent.left === n;
+      edits.push([n.start, n.start, "__hzL("], [n.object.end, n.end, left ? ").href" : ")"]);
+    }
+    for (const k in n) {
+      if (k === "type" || k === "start" || k === "end") continue;
+      const v = n[k];
+      if (Array.isArray(v)) { for (const c of v) if (c && typeof c.type === "string") visit(c, n, k); }
+      else if (v && typeof v.type === "string") visit(v, n, k);
+    }
+  };
+  try { visit(ast, null, null); } catch (e) { return src; }
+  if (!bound) for (const [n, parent, key] of ids) {
+    const left = parent.type === "AssignmentExpression" && parent.left === n;
+    edits.push([n.start, n.end, left ? "__hzloc.href" : (parent.type === "Property" && parent.shorthand && key === "value") ? "location: __hzloc" : "__hzloc"]);
+  }
+  if (!edits.length) return JS_PRE + src;
+  edits.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  let out = src;
+  for (const [s, e, r] of edits) out = out.slice(0, s) + r + out.slice(e);
+  return JS_PRE + out;
+}
+
+let acP = null;
+function loadAcorn() {
+  if (window.acorn) return Promise.resolve();
+  return acP || (acP = new Promise((res, rej) => { const e = document.createElement("script"); e.src = "https://cdn.jsdelivr.net/npm/acorn@8.14.0/dist/acorn.js"; e.onload = res; e.onerror = () => { acP = null; rej(new Error("acorn")); }; document.head.appendChild(e); }));
+}
+window.hzFrame = async (u, id, depth) => {
+  try {
+    const r = await lfetch(u); if (!/html/i.test(r.headers.get("content-type") || "")) return null;
+    return (await prep(await r.text(), r.url || u, id, depth)).html;
+  } catch (e) { return null; }
+};
+async function prep(html, base, id, depth = 0) {
+  const d = new DOMParser().parseFromString(html, "text/html");
+  d.querySelectorAll('meta[http-equiv="Content-Security-Policy" i],meta[http-equiv="refresh" i],base,link[rel~="preload" i],link[rel~="prefetch" i],link[rel~="modulepreload" i]').forEach(e => e.remove());
+  d.querySelectorAll("[integrity]").forEach(e => { e.removeAttribute("integrity"); e.removeAttribute("crossorigin"); });
+  const jobs = [], hook = (el, attr, kind) => {
+    const v = el.getAttribute(attr); if (!v || /^(data:|blob:|#|javascript:|about:)/i.test(v)) return;
+    jobs.push(asset(aabs(v, base), kind).then(x => el.setAttribute(attr, x)));
+  };
+  d.querySelectorAll("picture source").forEach(e => e.remove());
+  d.querySelectorAll("img[srcset]").forEach(e => { if (!e.getAttribute("src")) e.setAttribute("src", e.getAttribute("srcset").trim().split(/\s+/)[0]); e.removeAttribute("srcset"); });
+  d.querySelectorAll("img[src]").forEach(e => hook(e, "src", "blob"));
+  d.querySelectorAll('link[rel~="stylesheet" i][href],link[rel~="icon" i][href]').forEach(e => hook(e, "href", /icon/i.test(e.rel) ? "blob" : "css"));
+  d.querySelectorAll('script[src]:not([type="module" i])').forEach(e => hook(e, "src", "js"));
+  d.querySelectorAll("style").forEach(e => jobs.push(cssRewrite(e.textContent, base).then(x => { e.textContent = x; })));
+  d.querySelectorAll('[style*="url("]').forEach(e => jobs.push(cssRewrite(e.getAttribute("style"), base).then(x => e.setAttribute("style", x))));
+  await loadAcorn().catch(() => {});
+  d.querySelectorAll("script:not([src])").forEach(e => { const ty = (e.getAttribute("type") || "").toLowerCase(); if (!ty || /javascript|ecmascript|module/.test(ty)) e.textContent = rewriteJs(e.textContent); });
+  if (depth < 2) d.querySelectorAll("iframe[src]").forEach((e, i) => {
+    const v = e.getAttribute("src"); if (i > 7 || !v) return; const u = aabs(v, base); if (!/^https?:/i.test(u)) return;
+    jobs.push(window.hzFrame(u, id, depth + 1).then(h => { if (h) { e.removeAttribute("src"); e.setAttribute("srcdoc", h); } }));
+  });
+  $("status").textContent = "Loading " + jobs.length + " resources ...";
+  await Promise.race([Promise.allSettled(jobs), new Promise(r => setTimeout(r, 20000))]);
+  const m = d.createElement("meta"); m.name = "referrer"; m.content = "no-referrer";
+  const b = d.createElement("base"); b.href = base;
+  const sc = d.createElement("script"); sc.textContent = directShim(base, id);
+  d.head.prepend(sc); d.head.prepend(b); d.head.prepend(m);
+  return { title: d.title, html: "<!DOCTYPE html>" + d.documentElement.outerHTML };
+}
+async function goDirect(t, url, push, opts) {
+  t.direct = true; t.token = (t.token || 0) + 1; const my = t.token;
+  t.url = url; t.title = "Loading..."; t.loading = true;
+  if (push) { t.hist = t.hist.slice(0, t.i + 1); t.hist.push(url); t.i = t.hist.length - 1; }
+  if (t === active) { $("omni").value = url; $("ntp").hidden = true; t.frame.hidden = false; }
+  render(); navState(); $("status").textContent = "Loading " + url + " ...";
+  try {
+    await loadLibcurl();
+    const w = await resolveWisp();
+    if (directWisp !== w) { libcurl.set_websocket(w); directWisp = w; }
+    const r = await lfetch(url, opts);
+    if (my !== t.token) return;
+    const final = r.url || url, ct = (r.headers.get("content-type") || "").toLowerCase();
+    t.url = final; if (push) t.hist[t.i] = final; t.title = final.replace(/^https?:\/\//, "");
+    if (ct === "" || ct.includes("html")) {
+      const pr = await prep(await r.text(), final, t.id); if (my !== t.token) return; if (pr.title) t.title = pr.title;
+      t.frame.removeAttribute("src"); t.frame.srcdoc = pr.html;
+    } else {
+      const blob = await r.blob(); t.frame.removeAttribute("srcdoc"); t.frame.src = URL.createObjectURL(blob);
+    }
+  } catch (err) {
+    if (my !== t.token) return;
+    t.title = "Could not load"; t.frame.removeAttribute("src");
+    t.frame.srcdoc = '<body style="font:15px system-ui;padding:40px;max-width:560px;margin:auto"><h2>Could not load this page</h2><p>' + esc(url) + '</p><p style="color:#a33">' + esc(err && err.message || err) + '</p><p>Check that the Wisp server in settings is reachable, then reload.</p></body>';
+  }
+  t.loading = false; $("status").textContent = ""; render();
+  if (t === active) { if (document.activeElement !== $("omni")) $("omni").value = t.url; navState(); }
+}
+window.tabNav = (id, url, opts, blank) => { const t = tabs.find(x => x.id === id); if (!t) return; blank ? newTab(url) : go(t, url, true, opts); };
+
+function goHosted(t, url) {
+  const H = hostedURL(), origin = new URL(H).origin;
+  t.direct = false; t.hosted = true; t.url = url; t.title = "Loading...";
+  if (t === active) { $("omni").value = url; $("ntp").hidden = true; t.frame.hidden = false; }
+  render(); $("status").textContent = "Loading " + url;
+  const cfg = cfgObj();
+  if (t.ready && t.frame.src.startsWith(origin)) { t.frame.contentWindow.postMessage({ hz: 1, cfg, go: url }, origin); return; }
+  t.ready = false; t.pending = url;
+  t.frame.removeAttribute("srcdoc"); t.frame.src = H + (H.includes("?") ? "&" : "?") + "embed=1";
+}
+const toHosted = m => { try { active.frame.contentWindow.postMessage(Object.assign({ hz: 1 }, m), new URL(hostedURL()).origin); } catch (e) {} };
+function navState() {
+  if (active && active.sj && active.url) { $("back").disabled = false; $("fwd").disabled = false; return; }
+  if (active && active.hosted && active.url) { $("back").disabled = !active.hback; $("fwd").disabled = !active.hfwd; return; }
+  if (active && active.direct && active.url) { $("back").disabled = active.i <= 0; $("fwd").disabled = active.i >= active.hist.length - 1; return; }
+  let w = null; try { w = active && active.url && active.frame.contentWindow; } catch (e) {}
+  const nav = w && w.navigation;
+  $("back").disabled = !w || (nav ? !nav.canGoBack : false);
+  $("fwd").disabled = !w || (nav ? !nav.canGoForward : false);
+}
+
+/* keep address bar / titles in sync with whatever the page did (links, redirects, pushState) */
+setInterval(() => {
+  for (const t of tabs) {
+    if (t.sj) { try { const ti = t.frame.contentDocument && t.frame.contentDocument.title; if (ti && ti !== t.title) { t.title = ti; render(); } } catch (e) {} continue; }
+    if (!t.url || t.direct || t.hosted) continue;
+    try {
+      const w = t.frame.contentWindow, p = w.location.pathname;
+      if (!p.startsWith(PREFIX)) continue;
+      const real = decodeURIComponent(p.slice(PREFIX.length)) + w.location.hash;
+      let changed = false;
+      if (real !== t.url) { t.url = real; changed = true; }
+      const title = (w.document && w.document.title) || new URL(real).host;
+      if (title !== t.title) { t.title = title; changed = true; }
+      if (changed) { render(); if (t === active && document.activeElement !== $("omni")) $("omni").value = t.url; }
+    } catch (e) {}
+  }
+  navState();
+}, 250);
+
+/* controls */
+const submit = el => { const v = el.value; if (!v.trim()) return; el.blur(); go(active, v); };
+$("omni").onkeydown = e => { if (e.key === "Enter") submit($("omni")); };
+$("omni").onfocus = () => $("omni").select();
+$("ntpq").onkeydown = e => { if (e.key === "Enter") submit($("ntpq")); };
+$("newtab").onclick = () => newTab();
+$("back").onclick = () => { if (active.sj) return active.sjf && active.sjf.back(); if (active.hosted) return toHosted({ cmd: "back" }); if (active.direct) { if (active.i > 0) { active.i--; go(active, active.hist[active.i], false); } return; } try { active.frame.contentWindow.history.back(); } catch (e) {} };
+$("fwd").onclick = () => { if (active.sj) return active.sjf && active.sjf.forward(); if (active.hosted) return toHosted({ cmd: "fwd" }); if (active.direct) { if (active.i < active.hist.length - 1) { active.i++; go(active, active.hist[active.i], false); } return; } try { active.frame.contentWindow.history.forward(); } catch (e) {} };
+$("reload").onclick = () => { if (active.sj) return active.sjf && active.sjf.reload(); if (active.hosted) return toHosted({ cmd: "reload" }); if (active.direct && active.url) return go(active, active.url, false); if (active.url) try { active.frame.contentWindow.location.reload(); } catch (e) { active.frame.src = active.frame.src; } };
+$("home").onclick = () => { active.url = ""; active.title = "New Tab"; active.hist = []; active.i = -1; active.direct = false; active.sj = false; active.hosted = false; active.ready = false; active.frame.removeAttribute("srcdoc"); active.frame.src = "about:blank"; $("ntpq").value = ""; select(active); $("ntpq").focus(); };
+$("full").onclick = () => { const s = $("stage"); if (document.fullscreenElement) document.exitFullscreen(); else if (s.requestFullscreen) s.requestFullscreen(); };
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") { e.preventDefault(); $("omni").focus(); } });
+/* pages ask for new tabs (target=_blank links, window.open) */
+window.addEventListener("message", e => {
+  const d = e.data; if (!d || typeof d !== "object") return;
+  if (e.origin === location.origin && d.hzOpen) { EMBED ? parent.postMessage({ hz: 1, open: d.hzOpen }, "*") : newTab(d.hzOpen); return; }
+  if (!d.hz) return;
+  if (EMBED) {                                   /* we are the hosted engine, driven by a launcher page */
+    if (e.source !== parent) return;
+    if (d.cfg) { if (d.cfg.wisp) $("wisp").value = d.cfg.wisp; if (d.cfg.wisplist != null) $("wisplist").value = d.cfg.wisplist; if (d.cfg.ua) $("ua").value = d.cfg.ua; if (d.cfg.transport) $("transport").value = d.cfg.transport; curWisp = null; }
+    if (typeof d.go === "string" && /^https?:\/\//i.test(d.go)) go(active, d.go);
+    if (d.cmd === "back") $("back").click(); if (d.cmd === "fwd") $("fwd").click(); if (d.cmd === "reload") $("reload").click();
+    return;
+  }
+  let H; try { H = new URL(hostedURL()).origin; } catch (x) { return; }
+  if (e.origin !== H) return;
+  if (d.log) { log(d.log.lvl, "hosted:" + d.log.src, d.log.msg); return; }
+  if (d.open) return newTab(d.open);
+  const t = tabs.find(x => x.hosted && x.frame.contentWindow === e.source); if (!t) return;
+  if (d.ready) { t.ready = true; e.source.postMessage({ hz: 1, cfg: cfgObj(), go: t.pending || t.url }, H); return; }
+  if (d.state) {
+    if (d.state.url) t.url = d.state.url;
+    if (d.state.title) t.title = d.state.title;
+    t.hback = d.state.back; t.hfwd = d.state.fwd;
+    if (t.title !== "Loading...") $("status").textContent = "";
+    if (t === active) { setPill(d.state.pill || "chk", d.state.pilltext || "Hosted", "Wisp status from the hosted engine"); if (document.activeElement !== $("omni")) $("omni").value = t.url; navState(); }
+    render();
+  }
+});
+
+if (EMBED) {
+  const send = m => parent.postMessage(Object.assign({ hz: 1 }, m), "*");
+  let last = "";
+  setInterval(() => {
+    const t = active, st = { url: t.url, title: t.title, back: !$("back").disabled, fwd: !$("fwd").disabled, pill: $("pill").className, pilltext: $("pill").lastChild.textContent }, j = JSON.stringify(st);
+    if (j !== last && t.url) { last = j; send({ state: st }); }
+  }, 250);
+  send({ ready: 1 });
+}
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+/* single-file version: ask for the hosted site link on first open */
+if (window.HZ_SINGLE && !hostedURL()) {
+  const ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+  ov.innerHTML = '<div style="background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh);padding:22px;max-width:440px;width:100%"><h3 style="margin:0 0 6px">Connect to your hosted site</h3><p style="margin:0 0 12px;color:var(--mut)">Paste the link to your hosted copy (for example your GitHub Pages link). Browsing runs there, and this file just opens it.</p><input id="hzsetup" type="text" placeholder="https://name.github.io/repo/" spellcheck="false" style="width:100%;height:36px;padding:0 10px;border:1px solid var(--bd);border-radius:8px;background:var(--surf)"><p id="hzerr" style="color:var(--bad);margin:8px 0 0;min-height:18px"></p><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px"><button id="hzskip" class="btn">Use built-in engine instead</button><button id="hzsave" class="btn" style="background:var(--ac);color:#fff;border-color:var(--ac)">Save</button></div></div>';
+  document.body.appendChild(ov);
+  const inp = ov.querySelector("#hzsetup"); inp.focus();
+  const save = () => { $("hosted").value = inp.value.trim(); if (!hostedURL()) { ov.querySelector("#hzerr").textContent = "Enter a valid https link"; return; } store.set("hosted", $("hosted").value); ov.remove(); modeNote(); };
+  ov.querySelector("#hzsave").onclick = save; inp.onkeydown = e => { if (e.key === "Enter") save(); };
+  ov.querySelector("#hzskip").onclick = () => { $("hosted").value = ""; ov.remove(); };
+}
+modeNote();
+window.hz = { resolve, newTab, go, tabs: () => tabs };
+newTab();
+</script>
+</body>
+</html>

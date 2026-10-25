@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: my-wisp
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start

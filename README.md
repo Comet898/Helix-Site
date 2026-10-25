@@ -1,0 +1,44 @@
+# Browser (Scramjet v2), build 20
+
+Upload this whole folder to your host (GitHub Pages works). Keep the folder structure.
+
+    index.html          the browser
+    single.html         same browser with libcurl.js inlined, opens from file://
+    sw.js               lite engine service worker (fallback)
+    sj/sw.js            Scramjet v2 service worker
+    sj/scramjet/        Scramjet 2.0.67-alpha.2 (PATCHED, see below)
+    sj/controller/      @mercuryworkshop/scramjet-controller 0.0.14
+    sj/transport/       epoxy.mjs, libcurl.mjs
+    sj/hz-transport.js  adapter + automatic epoxy -> libcurl fallback
+    wisp-server/        your own Wisp server
+
+Local test: `python3 -m http.server 8080` in this folder, then open http://localhost:8080
+
+## What changed in build 20
+
+* New look: soft warm light and dark themes (Settings > Appearance), Chrome style tabs, one calm accent colour.
+* Buttons next to the address bar: Wisp servers (with a status light), Downloads, History, Bookmarks, Logs, Fullscreen, Settings.
+  Every one of them toggles: press it again and what it opened closes. History, Bookmarks, Downloads and Wisp servers
+  open as pages in a tab and the tab closes again. Esc closes Settings and popovers.
+* Removed: private mode, find in page, reader view, the menu button.
+* The new tab page is plain text links (bookmarks, then most visited, then Discord, GitHub, YouTube ...).
+* Logs: drag the top edge to resize, A- / A+ for the text size (both are remembered).
+* Site information (the icon at the left of the address bar) holds the per-site permissions.
+
+## Fixes
+
+* "undefined" at the end of the address (claude.ai/undefined, tiktok.com/404?fromUrl=%2Fundefined): Scramjet turned
+  history.pushState/replaceState calls without a URL into the path "undefined". Patched in sj/scramjet/scramjet.js
+  (search for `null!=t.args[2]&&`). If you ever replace that file with a fresh Scramjet download, re-apply the patch.
+  This was also why Reload and Back sometimes left the site.
+* Back / Forward only step to pages of the same tab and are greyed out when there is nowhere to go; Reload falls back to
+  loading the address again if the frame is not on the page.
+* Captchas and bot checks: the page and every request now use your own browser's real identity by default (User-Agent, client hints
+  and navigator all agree). The old default pretended to be Chrome 141 on Windows and replaced navigator inside every page, which bot
+  checks detect. Nothing in the proxied page is wrapped or replaced any more (no console hooks, no request body copies), and
+  the passkey switch-off uses Proxy wrappers that still look native. Settings > Browsing > Browser identity still lets you pick Chrome on Windows/macOS/Linux.
+  Limits that no code here can change: the TLS fingerprint of the transport and the reputation of the Wisp server's IP address
+  (datacenter addresses get harder captchas).
+* Wisp servers: both address forms (`/` and `/wisp/`) are tried and the one that answers is kept; servers on free hosting
+  (Render, Fly, Railway ...) are woken up and retried for up to 50 seconds; anura.pro is first in the list; only servers that
+  answered are used as fallbacks; the connection is checked when the page opens. Your own added servers are kept.
