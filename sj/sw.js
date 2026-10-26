@@ -4,6 +4,27 @@
 importScripts("controller/controller.sw.js");
 importScripts("hz-cors.js");   /* CORS base, see hz-cors.js */
 
+/* Remove integrity (and crossorigin on stylesheets) from proxied HTML. Scramjet rewrites CSS/JS, so the bytes never
+   match the page's original hash and the browser blocks the file (discord.com's Webflow stylesheet showed up bare).
+   Scramjet's own scramjet-attr-* attributes are left alone. */
+const TAG_RE = /<(?:link|script)\b[^>]*>/gi;
+const INTEGRITY_RE = /\s+integrity(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?(?=[\s>\/])/gi;
+const CROSSORIGIN_RE = /\s+crossorigin(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?(?=[\s>\/])/gi;
+const cleanTag = (t) => {
+  t = t.replace(INTEGRITY_RE, "");
+  return /^<link\b/i.test(t) && /\brel\s*=\s*["']?stylesheet/i.test(t) ? t.replace(CROSSORIGIN_RE, "") : t;
+};
+async function stripIntegrity(res) {
+  try {
+    if (!res || res.status !== 200 || !/text\/html/i.test(res.headers.get("content-type") || "")) return res;
+    const text = await res.clone().text();
+    const h = new Headers(res.headers);
+    h.delete("content-length");
+    h.delete("content-encoding");
+    return new Response(text.replace(TAG_RE, cleanTag), { status: 200, statusText: res.statusText, headers: h });
+  } catch (e) { return res; }
+}
+
 /* tell open pages that this worker just (re)started, so they can hand it their message port again */
 try { new BroadcastChannel("hz-sj").postMessage({ type: "sw-start" }); } catch (e) {}
 
@@ -32,7 +53,7 @@ addEventListener("fetch", (event) => {
     event.respondWith(withBody(event).then(async (ev) => {
       const pf = HzCors.preflight(ev.request);          /* OPTIONS preflight: answered here */
       if (pf) return pf;
-      return HzCors.wrap(await $scramjetController.route(ev), ev.request);
+      return HzCors.wrap(await stripIntegrity(await $scramjetController.route(ev)), ev.request);
     }));
   } else HzCors.leak(event.request);   /* not routed: report requests that escape the proxy */
 });
