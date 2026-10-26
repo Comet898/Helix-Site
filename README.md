@@ -54,3 +54,9 @@ Local test: `python3 -m http.server 8080` in this folder, then open http://local
   hints and navigator all change together, and the Chrome version follows your real browser.
 * Wisp drops ("MuxTaskEnded"): the transport is now rebuilt automatically and sockets that were on the dead connection
   are closed so Discord and similar sites reconnect. The error no longer shows as an unhandled rejection.
+
+## Build 21 fixes (single-file engine)
+
+* Scripts, ES modules, dynamic chunks and nested iframes no longer give up after 12-25 s. They wait up to 2 minutes and classic scripts retry 3 times through Wisp (a dropped script is what left sites like Discord on their "JavaScript is needed" page).
+* Nested iframes are embedded with srcdoc instead of blob: URLs, which the browser refuses when Helix is opened from a file.
+* The built-in engine now tests the Wisp servers (saved one first, then the pool) and uses one that really answers; servers that are blocked or dead are skipped for a while and replaced automatically.

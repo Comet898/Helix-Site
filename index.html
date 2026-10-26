@@ -9671,7 +9671,7 @@ function prepareEngineSwitch(t,kind){
 async function navigate(t, input, push = true, opts) {
  const url=resolve(input);if(!url)return;
  prepareEngineSwitch(t,builtinOn()?"builtin":window.HZ_SINGLE&&!EMBED?"hosted":"scramjet");
- if(builtinOn()||(window.HZ_SINGLE&&window.__hostedDead&&!EMBED)){armWait(t);log("info","engine","opening "+url+" with the built-in engine");return goDirect(t,url,push,opts);}
+ if(builtinOn()){armWait(t);log("info","engine","opening "+url+" with the built-in engine");return goDirect(t,url,push,opts);}
  if(window.HZ_SINGLE&&!EMBED){if(!hostedURL()){window.__launcherPending=url;if(window.openHostedSetup)window.openHostedSetup();setStatus("Connect the single-file launcher to your hosted browser first.");return;}armWait(t);log("info","engine","opening "+url+" through the hosted Scramjet browser");return goHosted(t,url);}
  armWait(t);log("info","engine","opening "+url+" with Scramjet v2");return goSJ(t,url);
 }
@@ -9685,14 +9685,6 @@ function goHosted(t, url) {
   if (t.ready && t.frame.src.startsWith(origin)) { t.frame.contentWindow.postMessage({ hz: 1, cfg: c, go: url }, origin); return; }
   t.ready = false; t.pending = url;
   t.frame.removeAttribute("srcdoc"); t.frame.src = H + (H.includes("?") ? "&" : "?") + "embed=1";
-  /* hosted site blocked by the network? then use the built-in Wisp engine from this file instead */
-  const hostedTok = t.token = (t.token || 0) + 1;
-  setTimeout(() => {
-    if (t.ready || !t.hosted || t.token !== hostedTok) return;
-    window.__hostedDead = true;
-    log("warn", "hosted", "the hosted site did not answer (blocked?). Falling back to the built-in engine over Wisp.");
-    goDirect(t, url, false, {});
-  }, 9000);
 }
 const toHosted = m => { try { active.frame.contentWindow.postMessage(Object.assign({ hz: 1 }, m), new URL(hostedURL()).origin); } catch (e) {} };
 /* what the hosted copy needs to know; "ua: off" is what older copies call your own browser */
@@ -9994,9 +9986,25 @@ const GE = (() => {
 const acorn=HZ_BUILTIN_PARSER,libcurl=HZ_BUILTIN_CURL;
 let builtinLoadPromise=null;
 const BUILTIN_POOL=["wss://wisp.mercurywork.shop/", "wss://definitelyscience.com/wisp/", "wss://mages.io/wisp/", "wss://lichology.com/wisp/", "wss://motor-cycle-part.org/wisp/", "wss://area.forwardersoft.com/wisp/", "wss://truf.the-nest.at/wisp/", "wss://thoughts.forwardersoft.com/wisp/", "wss://wisp.terbiumon.top/wisp/", "wss://anura.pro/", "wss://nebulaproxy.io/wisp/", "wss://invisiproxy.com/wisp/", "wss://english.algebra.teacher.vocabulary.homework.forwardersoft.com/wisp/"];
-const WSTAT=Object.create(null),WOFF=()=>[],wsPref=()=>store.get('hz.ge.wisp','').trim();
+const WSTAT=Object.create(null),deadW=new Map(),WOFF=()=>{const n=Date.now();return [...deadW].filter(([,t])=>t>n).map(([u])=>u);},wsPref=()=>store.get('hz.ge.wisp','').trim();
 const wsAll=()=>[...new Set([wsPref(),...BUILTIN_POOL].filter(Boolean))],wispUrl=u=>u,shortW=u=>String(u||'').replace(/^wss?:\/\//,'').replace(/\/$/,'');
-const resolveWisp=async()=>wsPref()||BUILTIN_POOL[0],probe=async()=>false;
+let wispOK='',wispFind=null;
+const probe=(u,ms=6000)=>new Promise(res=>{let ws,done=false;const t0=Date.now();const fin=ok=>{if(done)return;done=true;clearTimeout(tm);try{ws&&ws.close();}catch(e){}if(ok){WSTAT[u]={ms:Date.now()-t0};deadW.delete(u);}else deadW.set(u,Date.now()+90000);res(ok);};const tm=setTimeout(()=>fin(false),ms);try{ws=new WebSocket(u);ws.onopen=()=>fin(true);ws.onerror=()=>fin(false);ws.onclose=()=>fin(false);}catch(e){fin(false);}});
+/* a Wisp server that answers: the saved one, else the first of the pool that opens a socket (servers blocked by a filter are skipped) */
+const resolveWisp=async(force)=>{
+ if(!force&&wispOK&&!WOFF().includes(wispOK))return wispOK;
+ if(wispFind)return wispFind;
+ wispFind=(async()=>{
+  const list=[...new Set([wsPref(),...BUILTIN_POOL].filter(Boolean))];
+  for(let i=0;i<list.length;i+=5){
+   const batch=list.slice(i,i+5);
+   const found=await new Promise(res=>{let left=batch.length;batch.forEach(u=>probe(u).then(ok=>{if(ok)res(u);else if(--left===0)res('');}));});
+   if(found){wispOK=found;glog('Wisp server '+shortW(found)+' answered','ok');return found;}
+  }
+  deadW.clear();glog('no Wisp server answered, trying '+shortW(list[0]),'warn');return list[0];
+ })();
+ try{return await wispFind;}finally{wispFind=null;}
+};
 async function loadLibcurl(){
  if(builtinLoadPromise)return builtinLoadPromise;
  builtinLoadPromise=new Promise((resolve,reject)=>{
@@ -10007,7 +10015,7 @@ async function loadLibcurl(){
 }
 
 const PRIORITY = { html: 0, css: 1, js: 2, font: 3, image: 4, other: 5 };
-const MAXC = 8;                               /* simultaneous requests */
+const MAXC = 10;                               /* simultaneous requests */
 const glog = (msg, type) => {
   const m = String(msg).replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
   if (!m) return;
@@ -10156,7 +10164,7 @@ async function newSession(w) {
   curl = new libcurl.HTTPSession();
   curl.set_connections(MAXC, MAXC, MAXC);
   curlWisp = w;
-  if (old) setTimeout(() => { try { old.close && old.close(); } catch (e) {} }, 120000);
+  try { old && old.close && old.close(); } catch (e) {}
   return curl;
 }
 const hostOf = u => { try { return new URL(u).hostname; } catch (e) { return ""; } };
@@ -10184,7 +10192,6 @@ function benchmark(){ /* Built-in transport does not change shared Wisp health s
 async function ensureSession(){await loadLibcurl();if(curl)return curlWisp;if(wispBusy){await wispBusy;return curlWisp;}wispBusy=newSession(await resolveWisp());try{await wispBusy;}finally{wispBusy=null;}return curlWisp;}
 /* a connection that died (dropped Wisp, reset by a filter): rebuild, waiting a little longer each time */
 const WISP_DROP = /abort|operation|network|wisp|socket|closed|reset|interrupt|connection|fail|error|tls|ssl|eof|mux/i;
-let rotN = 0;
 async function reconnect(signal) {
   if (wispBusy) return wispBusy;
   wispBusy = (async () => {
@@ -10194,7 +10201,7 @@ async function reconnect(signal) {
       if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
       try {
         let w = curlWisp;
-        if (a >= 1 || rotN > 0) { const all = poolCandidates("", curlWisp); if (all.length) w = all[(rotN++) % all.length]; }
+        if (a === 2) { const alt = poolCandidates("", curlWisp)[0]; if (alt) w = alt; }
         await newSession(w || await resolveWisp());
         glog("reconnected to " + shortW(curlWisp) + " (attempt " + (a + 1) + ")", "ok"); return;
       } catch (e) { if (a === 2) throw e; }
@@ -10254,7 +10261,7 @@ async function doFetch(url, o) {
     const ctl = new AbortController();
     if (o.signal) { if (o.signal.aborted) ctl.abort(); else o.signal.addEventListener("abort", () => ctl.abort(), { once: true }); }
     const p = curl.fetch(u, { method: m, headers, body: b, redirect: "manual", signal: ctl.signal });
-    return withTimeout(p, o.timeout || 90000, ctl, hostOf(u));
+    return withTimeout(p, o.timeout || 60000, ctl, hostOf(u));
   };
   let resp, cur = url;
   try { resp = await once(cur, method, body); }
@@ -10262,12 +10269,8 @@ async function doFetch(url, o) {
     const aborted = err.name === "AbortError" || (o.signal && o.signal.aborted);
     if (aborted) throw err;
     if (!WISP_DROP.test(err.message || "") || !/^(GET|HEAD|OPTIONS)$/i.test(method)) throw err;
-    let lastErr = err;
-    for (let k = 0; k < 3; k++) {
-      try { await reconnect(o.signal); resp = await once(cur, method, body); lastErr = null; break; }
-      catch (e2) { lastErr = e2; if (e2.name === "AbortError" || (o.signal && o.signal.aborted)) throw e2; }
-    }
-    if (lastErr) throw lastErr;
+    await reconnect(o.signal);
+    resp = await once(cur, method, body);
   }
   let hops = 0;
   while (resp.status >= 300 && resp.status < 400 && resp.headers.get("location") && hops < 12) {
@@ -10281,7 +10284,7 @@ async function doFetch(url, o) {
     hops++;
   }
   const mime = (resp.headers.get("content-type") || "").split(";")[0].trim() || "application/octet-stream";
-  const buf = await withTimeout(resp.arrayBuffer(), o.bodyTimeout || 240000, new AbortController(), "the response body");
+  const buf = await withTimeout(resp.arrayBuffer(), o.bodyTimeout || 180000, new AbortController(), "the response body");
   const hd = {}; resp.headers.forEach((v, k) => { hd[k.toLowerCase()] = v; });
   const got = keepCookies(cur, resp);
   if (got) { const origin = new URL(cur).origin; if (o.src) syncCookies(o.src, origin); else if (o.tab) syncCookies(o.tab.frame.contentWindow, origin); }
@@ -10301,7 +10304,6 @@ async function viaOther(cand, url, o) {
 }
 async function fetchRetry(url, o, pri) {
   const r = await doFetch(url, o);
-  if (true) return r;
   if (r.status !== 404 || pri > PRIORITY.js || (o.signal && o.signal.aborted) || !poolOn()) return r;
   const host = hostOf(url), cands = poolCandidates(host, curlWisp).slice(0, 3);
   if (!cands.length) return r;
@@ -10823,7 +10825,7 @@ function req(url, opts = {}) {
     const i = ++rid;
     // 45s timeout — 120s was too long on filtered networks (Lightspeed etc.), causing
     // the pending map to accumulate zombie entries that never resolve or reject.
-    const tm = setTimeout(() => { pending.delete(i); rj(new Error('Timeout')); }, 300000);
+    const tm = setTimeout(() => { pending.delete(i); rj(new Error('Timeout')); }, 120000);
     pending.set(i, { rs, rj, tm });
     console.log('[REQDIAG-OUT]', i, (opts&&opts.method)||'GET', url);
     parent.postMessage({ t: 'q', i, url, opts }, '*');
@@ -11234,7 +11236,7 @@ function orderedScriptSwap(node, abs) {
       let fin = false; const end = () => { if (!fin) { fin = true; done(); } };
       node.addEventListener('load', end, { once: true });
       node.addEventListener('error', end, { once: true });
-      setTimeout(end, 20000);
+      setTimeout(end, 8000);
       try { _scriptSrcDesc.set.call(node, dataUrl || abs); } catch (e) { end(); }
     });
   })();
@@ -11275,7 +11277,7 @@ function proxyIframe(node, rawUrl) {
   const setSrc = (u) => { try { _iframeSrcDesc.set.call(node, u); } catch (e) {} };
   node.setAttribute('data-gust-frame-src', abs);                 // .src reads back the real URL
   const i = ++rid;
-  const tm = setTimeout(() => { pending.delete(i); setSrc('about:blank'); }, 20000);
+  const tm = setTimeout(() => { pending.delete(i); setSrc('about:blank'); }, 60000);
   pending.set(i, { rs: (r) => {
     if (r && r.d) setSrc('data:text/html;charset=utf-8;base64,' + Base64.encode(new TextEncoder().encode(r.d)));
     else setSrc('about:blank');                                  // not HTML / blocked → blank
@@ -13800,7 +13802,7 @@ async function renderPage(t, url, r, ctl, my) {
                             try {
                                 const r = await Promise.race([
                                     queueFetchT(absUrl, { signal: tabCtrl.signal }, PRIORITY.js),
-                                    new Promise((_, rj) => setTimeout(() => rj(new Error('module fetch timeout')), 12000))
+                                    new Promise((_, rj) => setTimeout(() => rj(new Error('module fetch timeout')), 120000))
                                 ]);
                                 if (!r.buf || !r.buf.byteLength) throw new Error('empty');
                                 src = new TextDecoder('utf-8').decode(new Uint8Array(r.buf));
@@ -13930,33 +13932,38 @@ async function renderPage(t, url, r, ctl, my) {
                     // Fetch concurrently; 12s per-script timeout falls back to a direct external
                     // load so one stalled chunk can't freeze the whole render.
                     await Promise.all(_toProxy.map(async ({ scr, jsUrl }) => {
-                        let done = false, lastE = null;
-                        for (let tryN = 0; tryN < 3 && !done; tryN++) {
-                            try {
-                                const jsR = await Promise.race([
-                                    queueFetchT(jsUrl, { signal: tabCtrl.signal, nocache: tryN > 0 }, PRIORITY.js),
-                                    new Promise((_, rj) => setTimeout(() => rj(new Error('script fetch timeout')), 120000))
-                                ]);
-                                if (stale()) return;
-                                if (jsR.status >= 400) throw Error('Script HTTP ' + jsR.status + ': ' + jsUrl);
-                                if (jsR.buf && jsR.buf.byteLength) {
-                                    const jsText = rewriteLocationRefs(new TextDecoder('utf-8').decode(new Uint8Array(jsR.buf)));
-                                    const bytes = new TextEncoder().encode(jsText);
-                                    let bin = '';
-                                    const chunk = 32768;
-                                    for (let j = 0; j < bytes.length; j += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(j, j + chunk));
-                                    scr.removeAttribute('integrity');
-                                    scr.setAttribute('src', 'data:text/javascript;charset=utf-8;base64,' + Base64.encode(bin));
-                                } else {
-                                    scr.setAttribute('src', jsUrl);
-                                }
-                                done = true;
-                            } catch (e) {
-                                if (e && e.name === 'AbortError') return;
-                                lastE = e; await new Promise(r => setTimeout(r, 400 * (tryN + 1)));
+                        try {
+                            let jsR, jsErr;
+                            for (let k = 0; k < 3 && !jsR; k++) {
+                                try {
+                                    jsR = await Promise.race([
+                                        queueFetchT(jsUrl, { signal: tabCtrl.signal, nocache: k > 0 }, PRIORITY.js),
+                                        new Promise((_, rj) => setTimeout(() => rj(new Error('script fetch timeout')), 120000))
+                                    ]);
+                                    if (jsR.status >= 500 && k < 2) { jsErr = new Error('Script HTTP ' + jsR.status); jsR = null; }
+                                } catch (e) { jsErr = e; if (stale() || (e && e.name === 'AbortError')) throw e; glog('retrying script ' + jsUrl.slice(0, 70) + ' (' + (e && e.message || e) + ')', 'warn'); }
                             }
+                            if (!jsR) throw jsErr || new Error('script fetch failed');
+                            if (stale()) return;
+                            if(jsR.status>=400)throw Error('Script HTTP '+jsR.status+': '+jsUrl);
+                            if (jsR.buf && jsR.buf.byteLength) {
+                                // Decode → rewrite location refs to __gustLoc → re-encode as UTF-8 bytes.
+                                const jsText = rewriteLocationRefs(new TextDecoder('utf-8').decode(new Uint8Array(jsR.buf)));
+                                const bytes = new TextEncoder().encode(jsText);
+                                let bin = '';
+                                const chunk = 32768;
+                                for (let j = 0; j < bytes.length; j += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(j, j + chunk));
+                                scr.removeAttribute('integrity');   // SRI hash won't match a data: URL; bytes already came via our proxy
+                                // charset=utf-8 is required: without it the browser decodes the data: URL as
+                                // ASCII/Latin-1, so any non-ASCII byte outside a string literal (common in
+                                // minified bundles) becomes an "Invalid or unexpected token" SyntaxError.
+                                scr.setAttribute('src', 'data:text/javascript;charset=utf-8;base64,' + Base64.encode(bin));
+                            } else {
+                                scr.setAttribute('src', jsUrl);   // empty → external fallback
+                            }
+                        } catch (e) {
+                            scr.removeAttribute('src');scr.textContent='';glog('ScriptLoadError: '+String(e.message||e),'err');
                         }
-                        if (!done) { glog('ScriptLoadError (kept as direct link): ' + String(lastE && lastE.message || lastE), 'err'); scr.removeAttribute('integrity'); scr.setAttribute('src', jsUrl); }
                     }));
 
                     if (tabCtrl.signal.aborted || stale()) return;
@@ -14007,7 +14014,7 @@ async function renderPage(t, url, r, ctl, my) {
                         try {
                             const ir = await Promise.race([
                                 queueFetchT(iu, { signal: tabCtrl.signal }, PRIORITY.html),
-                                new Promise((_, rj) => setTimeout(() => rj(new Error('iframe fetch timeout')), 12000))
+                                new Promise((_, rj) => setTimeout(() => rj(new Error('iframe fetch timeout')), 60000))
                             ]);
                             if (stale()) return;
                             const mime = (ir.mime || '').toLowerCase();
@@ -14031,8 +14038,8 @@ async function renderPage(t, url, r, ctl, my) {
                                 const srcset = el.getAttribute('srcset');
                                 if (srcset && !/^(data:|blob:)/i.test(srcset)) { el.removeAttribute('srcset'); el.setAttribute('data-gust-srcset', srcset); }
                             });
-                            const iBlob = URL.createObjectURL(new Blob(["<!DOCTYPE html>\n" + idoc.documentElement.outerHTML], { type: 'text/html;charset=utf-8' }));
-                            ifr.setAttribute('src', iBlob);
+                            ifr.removeAttribute('src');
+                            ifr.setAttribute('srcdoc', "<!DOCTYPE html>\n" + idoc.documentElement.outerHTML);
                         } catch (e) {
                             try { ifr.removeAttribute('src'); } catch(_) {}   // fetch failed/timeout → blank, never a direct load
                         }
@@ -14201,6 +14208,7 @@ async function open(t, url, push, opts) {
       if (err && err.name === "AbortError") return;
       lastErr = err; glog("could not load " + url.slice(0, 80) + ": " + (err && err.message || err), "err");
       if (curlWisp) cooldown.set(curlWisp + "|" + hostOf(url), Date.now() + 2 * 60 * 1000);
+      if (curlWisp && /connect|tunnel|websocket|wisp|timed out|network/i.test(String(err && err.message || err))) { deadW.set(curlWisp, Date.now() + 60000); if (wispOK === curlWisp) wispOK = ""; }
     }
   }
   if (t.token !== my) return;
