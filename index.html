@@ -900,7 +900,7 @@ body[data-tab-layout=vertical] #ntp-quick{display:none}
 .hz-pop-bar{cursor:grab;user-select:none;touch-action:none}.hz-pop-bar button{cursor:pointer}.hz-pop.drag .hz-pop-frame{pointer-events:none}.hz-pop.drag .hz-pop-bar{cursor:grabbing}
 </style>
 </head>
-<body data-tab-layout="vertical"><dialog id="site-data-dialog" aria-labelledby="site-data-title"><h2 id="site-data-title">Clear data for one site</h2><p>Remove single-file cookies for this hostname and its origin-scoped local/session storage. You may be signed out.</p><label for="site-data-origin">Site address</label><input id="site-data-origin" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false"><p>Other sites, history, bookmarks and settings stay. Shared parent-domain cookies are kept. Scramjet, hosted-engine and real-browser storage are not cleared here.</p><p id="site-data-result" role="status"></p><div class="actions"><button id="site-data-cancel" class="btn">Cancel</button><button id="site-data-confirm" class="btn pri">Clear this site</button></div></dialog>
+<body data-tab-layout="horizontal"><dialog id="site-data-dialog" aria-labelledby="site-data-title"><h2 id="site-data-title">Clear data for one site</h2><p>Remove single-file cookies for this hostname and its origin-scoped local/session storage. You may be signed out.</p><label for="site-data-origin">Site address</label><input id="site-data-origin" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false"><p>Other sites, history, bookmarks and settings stay. Shared parent-domain cookies are kept. Scramjet, hosted-engine and real-browser storage are not cleared here.</p><p id="site-data-result" role="status"></p><div class="actions"><button id="site-data-cancel" class="btn">Cancel</button><button id="site-data-confirm" class="btn pri">Clear this site</button></div></dialog>
 <aside id="tabs" aria-label="Vertical tabs"><div class="side-heading"><span class="side-logo" aria-hidden="true">B</span><div class="side-name">Browser<small>Your workspace</small></div></div><div class="side-caption"><span>Open tabs</span><span id="side-count">1</span></div><div id="tablist"></div><div class="hz-quick" id="side-quick"><button type="button" class="hz-q" data-site="https://cineby.tech/" title="Movies"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/></svg><span>Movies</span></button><button type="button" class="hz-q" data-site="https://freefy.app/" title="Music"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><span>Music</span></button></div><button id="newtab" class="ib" title="New tab" aria-label="New tab"></button></aside>
 <div id="top">
   <div id="toolbar"><button id="sidebar-toggle" class="ib" aria-label="Collapse sidebar" aria-controls="tabs" aria-expanded="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="4" width="17" height="16" rx="3"></rect><path d="M9 4v16"></path></svg></button>
@@ -938,7 +938,7 @@ body[data-tab-layout=vertical] #ntp-quick{display:none}
     <section><h4>Appearance</h4>
       <label class="set"><span>Theme</span><select data-set="theme"><option value="auto">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <label class="set"><span>Bookmarks bar</span><input class="sw" type="checkbox" data-set="bbar"></label>
-    <label class="layout-setting"><span>Tab layout<small>Vertical by default</small></span><select id="tab-layout-choice"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label></section>
+    <label class="layout-setting"><span>Tab layout<small>Horizontal by default</small></span><select id="tab-layout-choice"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label></section>
     <section><h4>Browsing</h4>
       <label class="set"><span>Search engine</span><select data-set="engine"></select></label>
       <label class="set"><span>Browser identity<small>Your own browser passes captchas and bot checks best</small></span><select data-set="ident"><option value="real">My own browser</option><option value="win">Chrome on Windows</option><option value="mac">Chrome on macOS</option><option value="linux">Chrome on Linux</option><option value="cros">Chrome on ChromeOS</option><option value="android">Chrome on Android</option><option value="ios">Chrome on iPhone</option></select></label>
@@ -8994,15 +8994,17 @@ async function doResolve(want) {
   if (!want) { wispOK = false; setPill("bad", "No server", "No Wisp server is set up"); return want; }
   const sleepy = SLEEPY.test(wsHost(want));
   setPill("chk", sleepy ? "Waking up" : "Connecting", (sleepy ? "Waking up " : "Checking ") + shortW(want));
-  if (await probe(want, 8000)) {
-    const use = wispUrl(want); curWisp = { want, use }; wispOK = true; setPill("ok", "Connected", "Connected to " + shortW(use)); return use;
-  }
+  /* test the preferred server and all the others at the same time, so one dead or blocked server never holds up the rest.
+     The preferred server wins if it answers within a short grace period after the first other answer. */
   const others = wispList().filter(x => x !== want);
-  const win = await new Promise(res => {
-    let left = others.length; if (!left) return res(null);
-    others.forEach(w => probe(w, 10000, true).then(ok => { if (ok) res(w); else if (--left === 0) res(null); }));
-  });
-  if (win) { const use = wispUrl(win); curWisp = { want, use }; wispOK = true; setPill("ok", "Connected", "Connected to " + shortW(use) + " (your preferred server did not answer)"); return use; }
+  const pref = probe(want, 10000).then(ok => ok ? want : null);
+  const rest = firstOk(others.map(w => probe(w, 10000, true).then(ok => ok ? w : null)));
+  let win = await Promise.race([pref, rest.then(async r => r ? ((await Promise.race([pref, sleep(1200).then(() => null)])) || r) : pref)]);
+  if (!win) win = await pref || await rest;
+  if (win) {
+    const use = wispUrl(win); curWisp = { want, use }; wispOK = true;
+    setPill("ok", "Connected", "Connected to " + shortW(use) + (win === want ? "" : " (your preferred server did not answer)")); return use;
+  }
   wispFailAt = Date.now(); wispOK = false;
   setPill("bad", "Offline", "No Wisp server answered. Open Wisp servers to test them or add your own.");
   return want;
@@ -9131,6 +9133,18 @@ async function makeTransport(kind, wisp) {
   };
   /* starts with the server that just answered; servers that answer later are added by topUpPool() */
   const t = new WispPoolTransport([wisp], one, log);
+  /* when the first server cannot reach a site (TLS errors, refused), probe the rest of the list and wait for them */
+  let probing = null;
+  t.onNeedMore = () => {
+    if (probing) return probing;
+    const n = t.urls.length;
+    for (const u of wsAll().filter(x => !WOFF().includes(x))) {
+      if (t.urls.includes(wispUrl(u))) continue;
+      probe(u, 8000, true).then(ms => { const a = wispUrl(u); if (ms && !t.urls.includes(a)) t.urls.push(a); });
+    }
+    probing = new Promise(res => { const t0 = Date.now(), iv = setInterval(() => { if (t.urls.length > n || Date.now() - t0 > 9000) { clearInterval(iv); res(); setTimeout(() => { probing = null; }, 20000); } }, 150); });
+    return probing;
+  };
   await t.init();
   return t;
 }
@@ -10413,17 +10427,17 @@ if (!EMBED) { if (engineFor() === "hosted") setPill("chk", "Hosted", "Wisp statu
 
 
 
-<dialog id="launcher-dialog" aria-labelledby="launcher-title"><h2 id="launcher-title">Connect your hosted browser.</h2><p>This file is a local launcher. Enter the address of your full hosted browser, with its Scramjet v2 assets. Pages run there while this file provides the interface.</p><label for="launcher-host">Hosted browser URL</label><input id="launcher-host" type="url" placeholder="https://your-name.github.io/your-browser/" autocomplete="url" spellcheck="false"><p id="launcher-error" role="status" aria-live="polite"></p><p class="launcher-note">Use the complete hosted project—not this same launcher. The host must allow embedding. This does not provide offline browsing.</p><div class="actions"><button id="launcher-later" class="btn">Set up later</button><button id="launcher-save" class="btn pri">Save connection</button></div></dialog><script id="bloom-layout-runtime">(()=>{
+<dialog id="launcher-dialog" aria-labelledby="launcher-title"><h2 id="launcher-title">Connect your hosted browser.</h2><p>This file is a local launcher. Enter the address of your full hosted browser, with its Scramjet v2 assets. Pages run there while this file provides the interface.</p><label for="launcher-host">Hosted browser URL</label><input id="launcher-host" type="url" placeholder="https://backupsugg-lab.github.io/Helix-Site/" autocomplete="url" spellcheck="false"><p id="launcher-error" role="status" aria-live="polite"></p><p class="launcher-note">Use the complete hosted project—not this same launcher. The host must allow embedding. This does not provide offline browsing.</p><div class="actions"><button id="launcher-later" class="btn">Set up later</button><button id="launcher-save" class="btn pri">Save connection</button></div></dialog><script id="bloom-layout-runtime">(()=>{
 const body=document.body,side=$('tabs'),list=$('tablist'),choice=$('tab-layout-choice'),toggle=$('sidebar-toggle');let collapsed=false,raf=0;
 function setCollapsed(value){collapsed=value;if(value&&side.contains(document.activeElement)&&toggle)toggle.focus();body.classList.toggle('sidebar-collapsed',value);side.inert=value;side.setAttribute('aria-hidden',String(value));if(toggle){toggle.setAttribute('aria-expanded',String(!value));toggle.setAttribute('aria-label',value?'Expand sidebar':'Collapse sidebar');toggle.title=value?'Expand sidebar':'Collapse sidebar';}}
-function layout(value){const v=value==='vertical'?'vertical':'horizontal';body.dataset.tabLayout=v;body.classList.remove('home-view','sidebar-peek','sidebar-collapsed');choice.value=v;setCollapsed(false);try{localStorage.setItem('bz.tabLayoutV',v);}catch(e){}fit();}
+function layout(value){const v=value==='vertical'?'vertical':'horizontal';body.dataset.tabLayout=v;body.classList.remove('home-view','sidebar-peek','sidebar-collapsed');choice.value=v;setCollapsed(false);try{localStorage.setItem('bz.tabLayoutH',v);}catch(e){}fit();}
 function fit(){raf=0;const rows=list.querySelectorAll('.tab'),count=$('side-count');if(count)count.textContent=rows.length;if(body.dataset.tabLayout==='vertical'){const groups=[...list.querySelectorAll('.gchip')],gh=groups.reduce((n,g)=>n+g.getBoundingClientRect().height+10,0),available=list.clientHeight-10-gh-Math.max(0,rows.length-1)*4;side.style.setProperty('--row-h',Math.max(30,Math.min(42,Math.floor(available/Math.max(1,rows.length))))+'px');}for(const t of rows){t.tabIndex=0;t.setAttribute('role','button');t.setAttribute('aria-label',t.title);const close=t.querySelector('b');if(close){close.tabIndex=0;close.setAttribute('role','button');close.setAttribute('aria-label','Close '+t.title);}}}
 function schedule(){if(!raf)raf=requestAnimationFrame(fit);}new ResizeObserver(schedule).observe(list);new MutationObserver(schedule).observe(list,{childList:true});choice.onchange=()=>layout(choice.value);if(toggle)toggle.onclick=()=>setCollapsed(!collapsed);
-side.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const t=e.target.closest('.tab');if(t){e.preventDefault();e.target.matches('b')?e.target.click():t.click();}}});let saved='vertical';try{saved=localStorage.getItem('bz.tabLayoutV')||'vertical';}catch(e){}layout(saved);
+side.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const t=e.target.closest('.tab');if(t){e.preventDefault();e.target.matches('b')?e.target.click():t.click();}}});let saved='horizontal';try{saved=localStorage.getItem('bz.tabLayoutH')||'horizontal';}catch(e){}layout(saved);
 })();
 (()=>{
-if(!window.HZ_SINGLE||EMBED)return;const dialog=$('launcher-dialog'),input=$('launcher-host'),error=$('launcher-error');
-window.openHostedSetup=()=>{input.value=window.__launcherHost||get('hosted')||'';error.textContent='';if(!dialog.open)dialog.showModal();input.focus();};
+if(!window.HZ_SINGLE||EMBED)return;const DEFAULT_HOSTED='https://backupsugg-lab.github.io/Helix-Site/';const dialog=$('launcher-dialog'),input=$('launcher-host'),error=$('launcher-error');
+window.openHostedSetup=()=>{input.value=window.__launcherHost||get('hosted')||DEFAULT_HOSTED;error.textContent='';if(!dialog.open)dialog.showModal();input.focus();};
 $('launcher-later').onclick=()=>dialog.close();
 function save(){let u;try{u=new URL(input.value.trim());if(u.username||u.password||!(u.protocol==='https:'||(u.protocol==='http:'&&/^(localhost|127\.0\.0\.1)$/.test(u.hostname))))throw Error();u.hash='';u.searchParams.delete('embed');const normalize=v=>v.replace(/\/index\.html$/i,'/').replace(/\/$/,'');if(normalize(u.href)===normalize(location.href.split('?')[0].split('#')[0])){error.textContent='Use a separate full hosted browser, not this launcher’s own address.';return;}}catch(e){error.textContent='Enter an HTTPS address, or http://localhost for development.';return;}
 window.__launcherHost=u.href;setSetting('hosted',u.href);if(!hostedURL()){error.textContent='The address could not be saved.';return;}dialog.close();log('info','hosted','Hosted browser connection saved: '+hostedURL());const pending=window.__launcherPending;window.__launcherPending='';if(pending&&active)go(active,pending);}

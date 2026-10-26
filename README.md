@@ -45,7 +45,7 @@ Local test: `python3 -m http.server 8080` in this folder, then open http://local
 
 ## Latest changes
 
-* Vertical tabs are the default (Settings > Tab layout still switches back).
+* Horizontal tabs are the default (Settings > Tab layout switches to vertical).
 * Movies and Music buttons (sidebar and new tab page) open cineby.tech and freefy.app inside Helix.
 * Sign-in popups (Continue with Google etc.) open as a draggable, resizable floating window over the tab. window.open is
   caught inside Scramjet itself (sj/scramjet/scramjet.js and sj/scramjet.all.js, search for `__hzPopup`). If you replace

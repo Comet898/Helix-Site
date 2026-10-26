@@ -253,7 +253,7 @@
       const host = remote.hostname, path = remote.pathname || "";
       body = await normBody(body);
       const order = this.order(host), safe = SAFE.test(method || "GET"), cf = /^\/cdn-cgi\//.test(path);
-      let lastErr = null, tries = 0;
+      let lastErr = null, tries = 0, askedMore = false;
       outer: for (let k = 0; k < order.length && tries < 6; k++) {
         const i = order[k];
         let again = 0;
@@ -271,6 +271,12 @@
             lastErr = e;
             const timeout = /timed out/i.test(errText(e));
             if (timeout) this.bad.set(i, Date.now() + 2 * 60 * 1000);
+            /* only one server known so far (others are still being probed): wait for them once, then keep going */
+            if (k >= order.length - 1 && this.onNeedMore && !askedMore && !timeout && (safe || retryable(method, e))) {
+              askedMore = true;
+              try { await this.onNeedMore(); } catch (x) {}
+              for (const j of this.order(host)) if (!order.includes(j)) order.push(j);
+            }
             const more = k < order.length - 1;
             /* a timed-out GET is tried once more on the same server before another server (another IP) is used */
             const sameAgain = timeout && safe && pinnedHere && again < 1;
