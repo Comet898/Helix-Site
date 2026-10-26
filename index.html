@@ -885,10 +885,23 @@ body.home-view #stage::after,#stage::after{display:block}
 :root:root:root #bmpop input:focus,:root:root:root #sadd input:focus{border-color:color-mix(in srgb,var(--fg) 40%,transparent);box-shadow:0 0 0 3px var(--soft)}
 :root:root:root #top{border-bottom-color:var(--edge)}
 :root:root:root #tabs{border-color:var(--edge)}
+
+/* ---------- quick site buttons (Movies, Music) ---------- */
+.hz-quick{display:flex;gap:8px}.hz-q{display:flex;align-items:center;justify-content:center;gap:8px;height:35px;padding:0 12px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--mut);font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.hz-q:hover{border-color:var(--ac);color:var(--fg)}.hz-q svg{flex:none}
+#side-quick{margin:0 10px 8px;flex-shrink:0}#side-quick .hz-q{flex:1}
+body:not([data-tab-layout=vertical]) #side-quick{display:none}
+#ntp-quick{position:absolute;left:50%;bottom:7vh;transform:translateX(-50%);z-index:3}
+@media(max-height:560px){#ntp-quick{display:none}}
+body[data-tab-layout=vertical] #ntp-quick{display:none}
+/* ---------- floating popup window ---------- */
+.hz-pop{background:#00000047!important;backdrop-filter:none!important}
+.hz-pop-card{position:absolute;resize:both;min-width:300px;min-height:340px;max-width:calc(100% - 8px);max-height:calc(100% - 8px)}
+.hz-pop-bar{cursor:grab;user-select:none;touch-action:none}.hz-pop-bar button{cursor:pointer}.hz-pop.drag .hz-pop-frame{pointer-events:none}.hz-pop.drag .hz-pop-bar{cursor:grabbing}
 </style>
 </head>
-<body data-tab-layout="horizontal"><dialog id="site-data-dialog" aria-labelledby="site-data-title"><h2 id="site-data-title">Clear data for one site</h2><p>Remove single-file cookies for this hostname and its origin-scoped local/session storage. You may be signed out.</p><label for="site-data-origin">Site address</label><input id="site-data-origin" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false"><p>Other sites, history, bookmarks and settings stay. Shared parent-domain cookies are kept. Scramjet, hosted-engine and real-browser storage are not cleared here.</p><p id="site-data-result" role="status"></p><div class="actions"><button id="site-data-cancel" class="btn">Cancel</button><button id="site-data-confirm" class="btn pri">Clear this site</button></div></dialog>
-<aside id="tabs" aria-label="Vertical tabs"><div class="side-heading"><span class="side-logo" aria-hidden="true">B</span><div class="side-name">Browser<small>Your workspace</small></div></div><div class="side-caption"><span>Open tabs</span><span id="side-count">1</span></div><div id="tablist"></div><button id="newtab" class="ib" title="New tab" aria-label="New tab"></button></aside>
+<body data-tab-layout="vertical"><dialog id="site-data-dialog" aria-labelledby="site-data-title"><h2 id="site-data-title">Clear data for one site</h2><p>Remove single-file cookies for this hostname and its origin-scoped local/session storage. You may be signed out.</p><label for="site-data-origin">Site address</label><input id="site-data-origin" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false"><p>Other sites, history, bookmarks and settings stay. Shared parent-domain cookies are kept. Scramjet, hosted-engine and real-browser storage are not cleared here.</p><p id="site-data-result" role="status"></p><div class="actions"><button id="site-data-cancel" class="btn">Cancel</button><button id="site-data-confirm" class="btn pri">Clear this site</button></div></dialog>
+<aside id="tabs" aria-label="Vertical tabs"><div class="side-heading"><span class="side-logo" aria-hidden="true">B</span><div class="side-name">Browser<small>Your workspace</small></div></div><div class="side-caption"><span>Open tabs</span><span id="side-count">1</span></div><div id="tablist"></div><div class="hz-quick" id="side-quick"><button type="button" class="hz-q" data-site="https://cineby.tech/" title="Movies"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/></svg><span>Movies</span></button><button type="button" class="hz-q" data-site="https://freefy.app/" title="Music"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><span>Music</span></button></div><button id="newtab" class="ib" title="New tab" aria-label="New tab"></button></aside>
 <div id="top">
   <div id="toolbar"><button id="sidebar-toggle" class="ib" aria-label="Collapse sidebar" aria-controls="tabs" aria-expanded="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="4" width="17" height="16" rx="3"></rect><path d="M9 4v16"></path></svg></button>
     <button id="back" class="ib" title="Back" aria-label="Back" disabled=""></button>
@@ -917,7 +930,7 @@ body.home-view #stage::after,#stage::after{display:block}
   <div id="bar"></div>
 </div>
 <main id="stage">
-  <div id="ntp"><svg id="trail" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path d="M-40 560C200 430 330 640 560 480S860 150 1240 250" stroke-width="2.5"/><path d="M-40 200C240 330 420 60 700 190S1000 560 1240 420" stroke-width="2"/><path d="M-40 360C160 120 460 420 640 300S980 110 1240 90" stroke-width="1.6"/><path d="M-40 640C260 560 380 380 640 460S1000 300 1240 360" stroke-width="1.8"/><path d="M-40 90C180 190 340 20 620 110S980 260 1240 160" stroke-width="1.4"/><path d="M-40 470C140 330 300 520 520 380S880 560 1240 520" stroke-width="2.2"/><path d="M-40 300C220 240 400 400 680 260S1020 40 1240 200" stroke-width="1.3"/><path d="M-40 700C220 620 420 680 700 560S1040 420 1240 600" stroke-width="1.7"/></svg><canvas id="motes" aria-hidden="true"></canvas><div id="afterglow-sky" aria-hidden="true"></div><div id="floating-home-light" aria-hidden="true"><div class="light-orb orb-a"></div><div class="light-orb orb-b"></div><div class="light-orb orb-c"></div></div><canvas id="ambient-lines" aria-hidden="true"></canvas><div class="home-emblem" aria-hidden="true"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"></path></svg></div><h1></h1><input id="ntpq" type="text" placeholder="Search or enter address" autocomplete="off" spellcheck="false" aria-label="Search the web or enter an address"></div>
+  <div id="ntp"><svg id="trail" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path d="M-40 560C200 430 330 640 560 480S860 150 1240 250" stroke-width="2.5"/><path d="M-40 200C240 330 420 60 700 190S1000 560 1240 420" stroke-width="2"/><path d="M-40 360C160 120 460 420 640 300S980 110 1240 90" stroke-width="1.6"/><path d="M-40 640C260 560 380 380 640 460S1000 300 1240 360" stroke-width="1.8"/><path d="M-40 90C180 190 340 20 620 110S980 260 1240 160" stroke-width="1.4"/><path d="M-40 470C140 330 300 520 520 380S880 560 1240 520" stroke-width="2.2"/><path d="M-40 300C220 240 400 400 680 260S1020 40 1240 200" stroke-width="1.3"/><path d="M-40 700C220 620 420 680 700 560S1040 420 1240 600" stroke-width="1.7"/></svg><canvas id="motes" aria-hidden="true"></canvas><div id="afterglow-sky" aria-hidden="true"></div><div id="floating-home-light" aria-hidden="true"><div class="light-orb orb-a"></div><div class="light-orb orb-b"></div><div class="light-orb orb-c"></div></div><canvas id="ambient-lines" aria-hidden="true"></canvas><div class="home-emblem" aria-hidden="true"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"></path></svg></div><h1></h1><input id="ntpq" type="text" placeholder="Search or enter address" autocomplete="off" spellcheck="false" aria-label="Search the web or enter an address"><div class="hz-quick" id="ntp-quick"><button type="button" class="hz-q" data-site="https://cineby.tech/" title="Movies"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/></svg><span>Movies</span></button><button type="button" class="hz-q" data-site="https://freefy.app/" title="Music"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><span>Music</span></button></div></div>
   <section id="lib" hidden="" aria-label="Page"><div class="wrap"><div id="libhead"><h2 id="libtitle"></h2><div id="libact" class="hd"></div></div><input id="libq" type="search" placeholder="Search" aria-label="Search"><div id="libbody"></div></div></section>
 <aside id="settings" aria-label="Settings">
   <div class="sh"><h3>Settings</h3><button id="setclose" class="ib" aria-label="Close settings"></button></div>
@@ -925,10 +938,10 @@ body.home-view #stage::after,#stage::after{display:block}
     <section><h4>Appearance</h4>
       <label class="set"><span>Theme</span><select data-set="theme"><option value="auto">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <label class="set"><span>Bookmarks bar</span><input class="sw" type="checkbox" data-set="bbar"></label>
-    <label class="layout-setting"><span>Tab layout<small>Horizontal by default</small></span><select id="tab-layout-choice"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label></section>
+    <label class="layout-setting"><span>Tab layout<small>Vertical by default</small></span><select id="tab-layout-choice"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label></section>
     <section><h4>Browsing</h4>
       <label class="set"><span>Search engine</span><select data-set="engine"></select></label>
-      <label class="set"><span>Browser identity<small>Your own browser passes captchas and bot checks best</small></span><select data-set="ident"><option value="real">My own browser</option><option value="win">Chrome on Windows</option><option value="mac">Chrome on macOS</option><option value="linux">Chrome on Linux</option></select></label>
+      <label class="set"><span>Browser identity<small>Your own browser passes captchas and bot checks best</small></span><select data-set="ident"><option value="real">My own browser</option><option value="win">Chrome on Windows</option><option value="mac">Chrome on macOS</option><option value="linux">Chrome on Linux</option><option value="cros">Chrome on ChromeOS</option><option value="android">Chrome on Android</option><option value="ios">Chrome on iPhone</option></select></label>
       <label class="set"><span>Ask before closing this page</span><input class="sw" type="checkbox" data-set="guard"></label>
     </section>
     <section><h4>Downloads</h4>
@@ -8851,7 +8864,18 @@ for (const k of ["log", "info", "warn", "error"]) {
   console[k] = (...a) => { o(...a); try { log(k === "error" ? "error" : k === "warn" ? "warn" : "info", "console", a.map(x => typeof x === "string" ? x : (x && x.stack) || (() => { try { return JSON.stringify(x); } catch (e) { return String(x); } })()).join(" ")); } catch (e) {} };
 }
 window.addEventListener("error", e => log("error", "app", describeError(e, "the browser UI")));
-window.addEventListener("unhandledrejection", e => log("error", "app", describeRejection(e, "the browser UI")));
+let muxNoted = 0;
+window.addEventListener("unhandledrejection", e => {
+  const t = String((e.reason && (e.reason.message || e.reason)) || "");
+  if (/MuxTaskEnded|Multiplexor task ended/i.test(t)) {
+    /* the Wisp connection dropped: rebuild it instead of letting every later request fail */
+    e.preventDefault();
+    try { window.HZTransport && window.HZTransport.markAllDead(); } catch (x) {}
+    if (Date.now() - muxNoted > 15000) { muxNoted = Date.now(); log("warn", "wisp", "the Wisp connection dropped, reconnecting"); }
+    return;
+  }
+  log("error", "app", describeRejection(e, "the browser UI"));
+});
 try { new BroadcastChannel("hzlog").onmessage = e => { const d = e.data; if (d && d.msg) log(d.lvl || "net", d.src || "net", d.msg); }; } catch (e) {}
 
 /* Passive listeners only. Nothing in a proxied page is replaced or wrapped (console, fetch, ...),
@@ -9041,14 +9065,24 @@ function resolve(q) {
    Default: the page and every request use your own browser's real identity, which is what bot checks and
    captchas compare against. The Chrome options exist for sites that dislike your browser, and then the
    request headers, client hints and navigator are all changed together so they still agree. */
-const CV = "141", CFV = "141.0.7390.55";
+const REAL_CV = (() => {
+  try { const b = ((navigator.userAgentData && navigator.userAgentData.brands) || []).find(x => x.brand === "Google Chrome" || x.brand === "Chromium"); if (b && /^\d+$/.test(b.version)) return b.version; } catch (e) {}
+  const m = /(?:Chrome|CriOS)\/(\d+)/.exec(navigator.userAgent); return m ? m[1] : "141";
+})();
+const CV = REAL_CV, CFV = CV + ".0.7390.55";
+/* every entry is Chrome (CriOS on iPhone, which is how Chrome identifies there) on that system */
 const OSP = {
-  win: { ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "Windows", nav: "Win32", pv: "15.0.0", arch: "x86" },
-  mac: { ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "macOS", nav: "MacIntel", pv: "14.6.1", arch: "arm" },
-  linux: { ua: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "Linux", nav: "Linux x86_64", pv: "6.8.0", arch: "x86" }
+  win: { ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "Windows", nav: "Win32", pv: "15.0.0", arch: "x86", bits: "64", mob: false, model: "" },
+  mac: { ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "macOS", nav: "MacIntel", pv: "14.6.1", arch: "arm", bits: "64", mob: false, model: "" },
+  linux: { ua: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "Linux", nav: "Linux x86_64", pv: "6.8.0", arch: "x86", bits: "64", mob: false, model: "" },
+  cros: { ua: "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Safari/537.36", plat: "Chrome OS", nav: "Linux x86_64", pv: "16093.57.0", arch: "x86", bits: "64", mob: false, model: "" },
+  android: { ua: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CV + ".0.0.0 Mobile Safari/537.36", plat: "Android", nav: "Linux armv81", pv: "14.0.0", arch: "", bits: "", mob: true, model: "Pixel 8" },
+  ios: { ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/" + CV + ".0.0.0 Mobile/15E148 Safari/604.1", plat: "iOS", nav: "iPhone", vendor: "Apple Computer, Inc.", mob: true, noCH: true }
 };
 const BRANDS = [["Chromium", CV], ["Not?A_Brand", "8"], ["Google Chrome", CV]];
 const CHUA = BRANDS.map(([b, v]) => '"' + b + '";v="' + v + '"').join(", ");
+/* Chrome on iPhone is WebKit underneath and sends no client hints at all */
+const identHeaders = P => P.noCH ? [] : [["sec-ch-ua", CHUA], ["sec-ch-ua-mobile", P.mob ? "?1" : "?0"], ["sec-ch-ua-platform", '"' + P.plat + '"']];
 const identity = () => OSP[get("ident")] || null;
 const UAS = () => { const P = identity(); return P ? P.ua : navigator.userAgent; };
 const realHint = () => { try { const d = navigator.userAgentData; if (!d) return []; return [["sec-ch-ua", d.brands.map(b => '"' + b.brand + '";v="' + b.version + '"').join(", ")], ["sec-ch-ua-mobile", d.mobile ? "?1" : "?0"], ["sec-ch-ua-platform", '"' + d.platform + '"']]; } catch (e) { return []; } };
@@ -9090,7 +9124,7 @@ async function regSW() {
 async function makeTransport(kind, wisp) {
   if (window.HZ_TEST_TRANSPORT) return window.HZ_TEST_TRANSPORT;            /* test hook */
   const { AdapterTransport, FallbackTransport, WispPoolTransport } = window.HZTransport, base = SJ_BASE();
-  const load = async (name, w) => { const m = await import(base + "transport/" + name + ".mjs"); return new AdapterTransport(new m.default({ wisp: w, websocket: w }), name); };
+  const load = async (name, w) => { const m = await import(base + "transport/" + name + ".mjs"); const mk = async () => new m.default({ wisp: w, websocket: w }); return new AdapterTransport(await mk(), name, mk); };
   const one = async w => {
     if (kind === "epoxy" || kind === "libcurl") return await load(kind, w);
     return new FallbackTransport(await load("epoxy", w), () => load("libcurl", w), log);
@@ -9142,13 +9176,25 @@ async function bootSJ(wisp) {
 function patchRealm(w) {
   const P = identity();
   if (P && w.Navigator) {
-    const D = (o, k, v) => w.Object.defineProperty(o, k, { get: () => v, configurable: true }), N = w.Navigator.prototype;
-    const B = BRANDS.map(([b, v]) => ({ brand: b, version: v })), FB = BRANDS.map(([b, v]) => ({ brand: b, version: v === "8" ? "8.0.0.0" : CFV }));
-    D(N, "userAgent", P.ua); D(N, "appVersion", P.ua.replace(/^Mozilla\//, "")); D(N, "platform", P.nav); D(N, "vendor", "Google Inc.");
-    D(N, "userAgentData", { brands: B, mobile: false, platform: P.plat,
-      getHighEntropyValues: () => w.Promise.resolve({ brands: B, mobile: false, platform: P.plat, platformVersion: P.pv, architecture: P.arch, bitness: "64", model: "", uaFullVersion: CFV, fullVersionList: FB, wow64: false }),
-      toJSON: () => ({ brands: B, mobile: false, platform: P.plat }) });
-    if (!w.chrome) w.chrome = { app: { isInstalled: false }, runtime: {} };
+    const D = (o, k, v) => w.Object.defineProperty(o, k, { get: () => v, configurable: true, enumerable: true }), N = w.Navigator.prototype;
+    D(N, "userAgent", P.ua); D(N, "appVersion", P.ua.replace(/^Mozilla\//, "")); D(N, "platform", P.nav); D(N, "vendor", P.vendor || "Google Inc.");
+    if (P.mob) D(N, "maxTouchPoints", 5);
+    if (P.noCH) {
+      D(N, "userAgentData", undefined);
+      try { w.Object.defineProperty(w, "chrome", { value: undefined, configurable: true, writable: true }); } catch (e) {}
+    } else {
+      const B = BRANDS.map(([b, v]) => ({ brand: b, version: v })), FB = BRANDS.map(([b, v]) => ({ brand: b, version: v === "8" ? "8.0.0.0" : CFV }));
+      const low = { brands: B, mobile: P.mob, platform: P.plat };
+      const high = { architecture: P.arch, bitness: P.bits, model: P.model, platformVersion: P.pv, uaFullVersion: CFV, fullVersionList: FB, wow64: false, formFactors: [P.mob ? "Mobile" : "Desktop"] };
+      const uad = w.Object.create(w.NavigatorUAData ? w.NavigatorUAData.prototype : w.Object.prototype);
+      w.Object.defineProperties(uad, {
+        brands: { get: () => B, enumerable: true }, mobile: { get: () => P.mob, enumerable: true }, platform: { get: () => P.plat, enumerable: true },
+        getHighEntropyValues: { value: hints => { const o = Object.assign({}, low); for (const k of (hints || [])) if (k in high) o[k] = high[k]; return w.Promise.resolve(o); }, enumerable: true },
+        toJSON: { value: () => low, enumerable: true }
+      });
+      D(N, "userAgentData", uad);
+      if (!w.chrome) w.chrome = { app: { isInstalled: false }, runtime: {} };
+    }
   }
   try {
     const PK = w.PublicKeyCredential;
@@ -9178,15 +9224,160 @@ const pageDoc = (title, body) => '<!doctype html><meta charset="utf-8"><meta nam
 const errorPage = (url, msg) => pageDoc("Could not load page", '<h2>Could not load this page</h2><p><code>' + esc(url) + '</code></p><p class="e">' + esc(msg) + '</p><p>This usually means the Wisp server or the site refused the connection. Try Reload, pick another server in Wisp servers, or switch Transport to libcurl in Settings. The Logs panel has the full error.</p><p><a href="" onclick="location.reload();return false">Reload</a></p>');
 const noWispPage = () => pageDoc("No Wisp server", '<h2>No working Wisp server</h2><p>Every server in the list is offline or blocking you.</p><p>Open <b>Wisp servers</b> (the server button next to the address bar) and press <b>Test all</b>, or add your own: run <code>npm install</code> and <code>npm start</code> in the <b>wisp-server</b> folder, then add <code>ws://localhost:8080/</code>.</p><p>To use your own server away from your computer, deploy that folder on Render, Railway or Fly and add its <code>wss://</code> address.</p>');
 
+/* ---------- popups: window.open from a page opens inside the browser, not as a separate window ----------
+   Sign-in flows ("Continue with Google") call window.open. Scramjet hands that to the real browser, which opens
+   an extra window outside this one. Here the popup becomes a panel over the current tab: same engine, same cookies,
+   window.opener is kept (sign-in pages report back to it) and window.close() closes the panel.
+   Links with target=_blank open as a new tab of this browser. Anything unusual falls back to the old behaviour. */
+const POPS = [], POP_DONE = new WeakSet();
+(function () {
+  const st = document.createElement("style"); st.id = "hz-popup-v1";
+  st.textContent = ".hz-pop{position:absolute;inset:0;z-index:70;display:grid;place-items:center;background:#0000008c;backdrop-filter:blur(3px)}" +
+    ".hz-pop[hidden]{display:none}" +
+    ".hz-pop-card{display:flex;flex-direction:column;overflow:hidden;background:var(--bar);color:var(--fg);border:1px solid var(--bd);border-radius:12px;box-shadow:0 24px 80px #0007}" +
+    ".hz-pop-bar{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 14px;border-bottom:1px solid var(--bd);font-size:12px}" +
+    ".hz-pop-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut)}" +
+    ".hz-pop-bar button{border:0;border-radius:7px;background:transparent;color:var(--fg);font:inherit;font-size:12px;padding:5px 9px;cursor:pointer}" +
+    ".hz-pop-bar button:hover{background:var(--hover)}.hz-pop-x{font-size:17px!important;line-height:1}" +
+    ".hz-pop-frame{flex:1;width:100%;min-height:0;border:0;background:var(--page)}";
+  document.head.appendChild(st);
+})();
+function realUrlOf(win, frame) {
+  try { const h = win.location.href; return h.startsWith(sjPrefix()) ? $scramjet.unrewriteUrl(h, frame.context) : h; } catch (e) { return ""; }
+}
+/* which tab (and which popup, if any) a proxied window belongs to */
+function popOwner(win) {
+  try {
+    let w = win;
+    for (let i = 0; i < 12 && w.parent !== window && w.parent !== w; i++) w = w.parent;
+    const p = POPS.find(x => x.frame.contentWindow === w); if (p) return { tab: p.tab, pop: p };
+    const t = tabs.find(x => x.frame.contentWindow === w); if (t) return { tab: t, pop: null };
+  } catch (e) {}
+  return null;
+}
+function popSync() { try { for (const p of POPS) p.el.hidden = p.tab !== active; } catch (e) {} }
+function closePopup(p) {
+  if (!p || p.closed) return; p.closed = true;
+  const i = POPS.indexOf(p); if (i >= 0) POPS.splice(i, 1);
+  try { const fr = sj && sj.controller && sj.controller.frames, k = fr ? fr.indexOf(p.pt.sjf) : -1; if (k >= 0) fr.splice(k, 1); } catch (e) {}
+  p.el.remove();
+}
+function openPopup(owner, openerWin, url, features, linkOpener) {
+  const t = owner.tab, sz = {};
+  String(features || "").split(",").forEach(kv => { const a = kv.split("="); if (a[0]) sz[a[0].trim().toLowerCase()] = (a[1] || "").trim(); });
+  const W = Math.max(340, Math.min(+sz.width || 520, 1000)), H = Math.max(380, Math.min(+sz.height || 680, 1000));
+  const ov = document.createElement("div"); ov.className = "hz-pop"; ov.hidden = t !== active;
+  const card = document.createElement("div"); card.className = "hz-pop-card"; card.setAttribute("role", "dialog");
+  card.style.width = "min(" + W + "px,calc(100% - 24px))"; card.style.height = "min(" + H + "px,calc(100% - 24px))";
+  card.style.left = "50%"; card.style.top = "50%"; card.style.transform = "translate(-50%,-50%)";
+  const bar = document.createElement("div"); bar.className = "hz-pop-bar";
+  const title = document.createElement("span"); title.className = "hz-pop-title";
+  const inTab = document.createElement("button"); inTab.type = "button"; inTab.textContent = "Open in tab";
+  const x = document.createElement("button"); x.type = "button"; x.className = "hz-pop-x"; x.setAttribute("aria-label", "Close"); x.textContent = "\u00d7";
+  bar.append(title, inTab, x);
+  const f = document.createElement("iframe"); f.className = "hz-pop-frame"; f.title = "popup"; f.setAttribute("allow", allowFor(""));
+  card.append(bar, f); ov.appendChild(card); $("stage").appendChild(ov);
+  const pt = { id: -1, title: "", url, frame: f, popup: true, hist: [], i: -1, direct: false };
+  const p = { tab: t, el: ov, frame: f, pt, closed: false, href: url };
+  try { title.textContent = new URL(url).hostname; } catch (e) {}
+  x.onclick = () => closePopup(p);
+  /* drag the window by its title bar */
+  bar.addEventListener("pointerdown", e => {
+    if (e.target.closest("button") || e.button !== 0) return;
+    const st = $("stage").getBoundingClientRect(), cr = card.getBoundingClientRect();
+    card.style.transform = "none"; card.style.left = (cr.left - st.left) + "px"; card.style.top = (cr.top - st.top) + "px";
+    const dx = e.clientX - cr.left, dy = e.clientY - cr.top; ov.classList.add("drag");
+    try { bar.setPointerCapture(e.pointerId); } catch (x2) {}
+    const mv = ev => { card.style.left = Math.max(0, Math.min(st.width - 80, ev.clientX - st.left - dx)) + "px"; card.style.top = Math.max(0, Math.min(st.height - 40, ev.clientY - st.top - dy)) + "px"; };
+    const up = () => { ov.classList.remove("drag"); bar.removeEventListener("pointermove", mv); bar.removeEventListener("pointerup", up); bar.removeEventListener("pointercancel", up); };
+    bar.addEventListener("pointermove", mv); bar.addEventListener("pointerup", up); bar.addEventListener("pointercancel", up);
+  });
+  inTab.onclick = () => { const u = p.href || url; closePopup(p); newTab(u, t); };
+  POPS.push(p);
+  try {
+    pt.sjf = sj.controller.createFrame(f); hookFrame(pt, pt.sjf);
+    $scramjet.Tap.tap(pt.sjf.hooks.init.post, ctx => {
+      try {
+        if (!ctx.isTopLevel) return; const w = ctx.window;
+        if (linkOpener && openerWin) Object.defineProperty(w, "opener", { value: openerWin, configurable: true, writable: true });
+        Object.defineProperty(w, "close", { value: function close() { closePopup(p); }, configurable: true, writable: true });
+        p.href = realUrlOf(w, pt.sjf) || p.href;
+        let tt = ""; try { tt = w.document.title; } catch (e) {}
+        title.textContent = (tt ? tt + " - " : "") + (siteOf(p.href) || ""); 
+      } catch (e) {}
+    });
+    f.addEventListener("load", () => { try { const w = f.contentWindow; p.href = realUrlOf(w, pt.sjf) || p.href; const tt = w.document.title; title.textContent = (tt ? tt + " - " : "") + (siteOf(p.href) || ""); } catch (e) {} });
+    pt.sjf.go(url);
+  } catch (e) { closePopup(p); throw e; }
+  log("info", "app", "opened a popup inside the tab: " + url.slice(0, 200));
+  return p;
+}
+/* entry point for the patched window.open inside Scramjet (sj/scramjet/scramjet.js): the page's window.open lands here
+   with the real address. Returns {w: popupWindow} when the popup was opened inside the browser, nothing to fall back. */
+window.__hzPopup = function (openerWin, abs, feat, name) {
+  try {
+    const owner = popOwner(openerWin); if (!owner) return;
+    if (name && !/^_blank$/i.test(name)) { let ex = null; try { ex = openerWin.frames[name]; } catch (e) {} if (ex) return; }
+    if (POPS.filter(q => q.tab === owner.tab).length >= 3) return { w: null };
+    const link = !/\bno(opener|referrer)\b/i.test(feat || "");
+    const p = openPopup(owner, openerWin, abs, feat, link);
+    return { w: link ? p.frame.contentWindow : null };
+  } catch (e) { log("warn", "app", "popup fallback (opened as a normal window): " + (e && e.message)); }
+};
+function hookPopups(t, frame) {
+  const { Tap } = $scramjet;
+  Tap.tap(frame.hooks.init.post, ctx => {
+    const w = ctx.window; if (!w || POP_DONE.has(w)) return; POP_DONE.add(w);
+    try {
+      const orig = w.open;
+      if (typeof orig === "function") {
+        const proxy = new Proxy(orig, {
+          apply(target, thisArg, args) {
+            const pass = () => Reflect.apply(target, thisArg, args);
+            try {
+              const raw = args[0] == null ? "" : String(args[0]), name = args[1] == null ? "" : String(args[1]), feat = args[2] == null ? "" : String(args[2]);
+              if (/^(_self|_top|_parent|_unfencedTop)$/i.test(name)) return pass();
+              if (!raw || /^(about:|javascript:|blob:|data:)/i.test(raw)) return pass();
+              if (name && !/^_blank$/i.test(name)) { let ex = null; try { ex = w.frames[name]; } catch (e) {} if (ex) return pass(); }
+              const owner = popOwner(w); if (!owner) return pass();
+              const base = realUrlOf(w, frame); if (!base) return pass();
+              let abs = new URL(raw, base).href; if (!/^https?:/i.test(abs)) return pass();
+              if (abs.startsWith(sjPrefix())) { try { abs = $scramjet.unrewriteUrl(abs, frame.context); } catch (e2) { return pass(); } if (!/^https?:/i.test(abs)) return pass(); }
+              if (POPS.filter(q => q.tab === owner.tab).length >= 3) return null;
+              const link = !/\bno(opener|referrer)\b/i.test(feat);
+              const p = openPopup(owner, w, abs, feat, link);
+              return link ? p.frame.contentWindow : null;
+            } catch (e) { log("warn", "app", "popup fallback (opened as a normal window): " + (e && e.message)); return pass(); }
+          }
+        });
+        try { w.open = proxy; } catch (e) {}
+        if (w.open !== proxy) { try { Object.defineProperty(w, "open", { value: proxy, configurable: true, writable: true, enumerable: true }); } catch (e) {} }
+      }
+      const doc = w.document;
+      if (doc && doc.addEventListener) doc.addEventListener("click", e => {
+        try {
+          if (e.defaultPrevented || e.button !== 0) return;
+          const a = e.target && e.target.closest && e.target.closest("a[target]");
+          if (!a || !/^_blank$/i.test(a.getAttribute("target") || "")) return;
+          const href = a.href; if (!/^https?:/i.test(href)) return;
+          const owner = popOwner(w); if (!owner) return;
+          e.preventDefault(); newTab(href, owner.tab);
+        } catch (er) {}
+      }, true);
+    } catch (e) {}
+  });
+}
+
 function hookFrame(t, frame) {
   const { Tap } = $scramjet, starts = new WeakMap();
+  try { hookPopups(t, frame); } catch (e) { log("warn", "app", "popup handling could not start: " + e.message); }
   Tap.tap(frame.hooks.fetch.request, (ctx, props) => {
     starts.set(ctx.request, performance.now());
     const h = props.init && props.init.headers; if (!Array.isArray(h)) return;
     const P = identity();
     for (let i = h.length - 1; i >= 0; i--) if (/^(user-agent|sec-ch-ua.*)$/i.test(h[i][0])) h.splice(i, 1);
     h.push(["User-Agent", P ? P.ua : navigator.userAgent]);
-    if (P) h.push(["sec-ch-ua", CHUA], ["sec-ch-ua-mobile", "?0"], ["sec-ch-ua-platform", '"' + P.plat + '"']);
+    if (P) identHeaders(P).forEach(x => h.push(x));
     else realHint().forEach(x => h.push(x));
     if (!h.some(x => String(x[0]).toLowerCase() === "accept-language")) { const l = navigator.language || "en-US"; h.push(["Accept-Language", l + "," + l.split("-")[0] + ";q=0.9"]); }
   });
@@ -9584,7 +9775,7 @@ function applyTheme() {
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 const SET_ON = {
   theme: applyTheme, bbar: () => drawBbar(),
-  ident: () => log("info", "app", "identity set to " + get("ident") + " (applies to the next page you open)"),
+  ident: () => log("info", "app", "identity set to " + get("ident") + " (applies to the next page you open; reload the current one)"),
   transport: () => log("info", "app", "transport set to " + get("transport") + " (applies to the next page you open)")
 };
 function setSetting(k, v) {
@@ -9663,7 +9854,7 @@ function newTab(input, opener) {
   return t;
 }
 function select(t) {
-  active = t;
+  active = t; popSync();
   for (const x of tabs) x.frame.hidden = x !== t || !x.url || !!x.internal;
   $("ntp").hidden = !!t.url;
   $("lib").hidden = !t.internal;
@@ -9675,7 +9866,7 @@ function select(t) {
 function closeTab(t) {
   const i = tabs.indexOf(t); if (i < 0) return;
   if (web(t.url)) CLOSED.push(t.url);
-  tabs.splice(i, 1); t.frame.remove();
+  tabs.splice(i, 1); POPS.filter(p => p.tab === t).forEach(closePopup); t.frame.remove();
   if (!tabs.length) return newTab();
   if (active === t) select(tabs.includes(t.opener) ? t.opener : tabs[Math.min(i, tabs.length - 1)]); else render();
 }
@@ -10206,6 +10397,13 @@ $('sitepop').addEventListener('click',e=>{if(e.target.closest('[data-clear-site]
 
 /* ---------- start ---------- */
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+
+/* Movies / Music buttons: open the site inside Helix (same tab if it is a blank new tab, otherwise a new tab) */
+document.addEventListener("click", e => {
+  const b = e.target && e.target.closest && e.target.closest(".hz-q[data-site]"); if (!b) return;
+  const u = b.getAttribute("data-site");
+  if (active && !active.url && !active.internal) go(active, u); else newTab(u, active);
+});
 window.hz = { resolve, newTab, go, tabs: () => tabs };
 log("info", "app", "browser started");
 applyTheme(); applyLogs(); badge(); drawBbar(); newTab();
@@ -10218,10 +10416,10 @@ if (!EMBED) { if (engineFor() === "hosted") setPill("chk", "Hosted", "Wisp statu
 <dialog id="launcher-dialog" aria-labelledby="launcher-title"><h2 id="launcher-title">Connect your hosted browser.</h2><p>This file is a local launcher. Enter the address of your full hosted browser, with its Scramjet v2 assets. Pages run there while this file provides the interface.</p><label for="launcher-host">Hosted browser URL</label><input id="launcher-host" type="url" placeholder="https://your-name.github.io/your-browser/" autocomplete="url" spellcheck="false"><p id="launcher-error" role="status" aria-live="polite"></p><p class="launcher-note">Use the complete hosted project—not this same launcher. The host must allow embedding. This does not provide offline browsing.</p><div class="actions"><button id="launcher-later" class="btn">Set up later</button><button id="launcher-save" class="btn pri">Save connection</button></div></dialog><script id="bloom-layout-runtime">(()=>{
 const body=document.body,side=$('tabs'),list=$('tablist'),choice=$('tab-layout-choice'),toggle=$('sidebar-toggle');let collapsed=false,raf=0;
 function setCollapsed(value){collapsed=value;if(value&&side.contains(document.activeElement)&&toggle)toggle.focus();body.classList.toggle('sidebar-collapsed',value);side.inert=value;side.setAttribute('aria-hidden',String(value));if(toggle){toggle.setAttribute('aria-expanded',String(!value));toggle.setAttribute('aria-label',value?'Expand sidebar':'Collapse sidebar');toggle.title=value?'Expand sidebar':'Collapse sidebar';}}
-function layout(value){const v=value==='vertical'?'vertical':'horizontal';body.dataset.tabLayout=v;body.classList.remove('home-view','sidebar-peek','sidebar-collapsed');choice.value=v;setCollapsed(false);try{localStorage.setItem('bz.tabLayout',v);}catch(e){}fit();}
+function layout(value){const v=value==='vertical'?'vertical':'horizontal';body.dataset.tabLayout=v;body.classList.remove('home-view','sidebar-peek','sidebar-collapsed');choice.value=v;setCollapsed(false);try{localStorage.setItem('bz.tabLayoutV',v);}catch(e){}fit();}
 function fit(){raf=0;const rows=list.querySelectorAll('.tab'),count=$('side-count');if(count)count.textContent=rows.length;if(body.dataset.tabLayout==='vertical'){const groups=[...list.querySelectorAll('.gchip')],gh=groups.reduce((n,g)=>n+g.getBoundingClientRect().height+10,0),available=list.clientHeight-10-gh-Math.max(0,rows.length-1)*4;side.style.setProperty('--row-h',Math.max(30,Math.min(42,Math.floor(available/Math.max(1,rows.length))))+'px');}for(const t of rows){t.tabIndex=0;t.setAttribute('role','button');t.setAttribute('aria-label',t.title);const close=t.querySelector('b');if(close){close.tabIndex=0;close.setAttribute('role','button');close.setAttribute('aria-label','Close '+t.title);}}}
 function schedule(){if(!raf)raf=requestAnimationFrame(fit);}new ResizeObserver(schedule).observe(list);new MutationObserver(schedule).observe(list,{childList:true});choice.onchange=()=>layout(choice.value);if(toggle)toggle.onclick=()=>setCollapsed(!collapsed);
-side.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const t=e.target.closest('.tab');if(t){e.preventDefault();e.target.matches('b')?e.target.click():t.click();}}});let saved='horizontal';try{saved=localStorage.getItem('bz.tabLayout')||'horizontal';}catch(e){}layout(saved);
+side.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const t=e.target.closest('.tab');if(t){e.preventDefault();e.target.matches('b')?e.target.click():t.click();}}});let saved='vertical';try{saved=localStorage.getItem('bz.tabLayoutV')||'vertical';}catch(e){}layout(saved);
 })();
 (()=>{
 if(!window.HZ_SINGLE||EMBED)return;const dialog=$('launcher-dialog'),input=$('launcher-host'),error=$('launcher-error');

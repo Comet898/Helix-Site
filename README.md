@@ -1,4 +1,4 @@
-# Browser (Scramjet v2), build 20
+# Helix
 
 Upload this whole folder to your host (GitHub Pages works). Keep the folder structure.
 
@@ -42,3 +42,15 @@ Local test: `python3 -m http.server 8080` in this folder, then open http://local
 * Wisp servers: both address forms (`/` and `/wisp/`) are tried and the one that answers is kept; servers on free hosting
   (Render, Fly, Railway ...) are woken up and retried for up to 50 seconds; anura.pro is first in the list; only servers that
   answered are used as fallbacks; the connection is checked when the page opens. Your own added servers are kept.
+
+## Latest changes
+
+* Vertical tabs are the default (Settings > Tab layout still switches back).
+* Movies and Music buttons (sidebar and new tab page) open cineby.tech and freefy.app inside Helix.
+* Sign-in popups (Continue with Google etc.) open as a draggable, resizable floating window over the tab. window.open is
+  caught inside Scramjet itself (sj/scramjet/scramjet.js and sj/scramjet.all.js, search for `__hzPopup`). If you replace
+  those files with a fresh Scramjet download, re-apply that patch.
+* Browser identity: My own browser, or Chrome on Windows / macOS / Linux / ChromeOS / Android / iPhone. User-Agent, client
+  hints and navigator all change together, and the Chrome version follows your real browser.
+* Wisp drops ("MuxTaskEnded"): the transport is now rebuilt automatically and sockets that were on the dead connection
+  are closed so Discord and similar sites reconnect. The error no longer shows as an unhandled rejection.

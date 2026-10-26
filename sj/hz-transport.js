@@ -53,33 +53,87 @@
     return body;
   }
 
+  const SAFE = /^(GET|HEAD|OPTIONS)$/i;
+  /* the Wisp connection can drop at any time (server restart, idle timeout, host limits). epoxy then reports
+     "Wisp: MuxTaskEnded" for everything that follows, so the transport is rebuilt and the websockets that were
+     riding on it are closed, which makes sites such as Discord reconnect by themselves */
+  const MUX = /MuxTaskEnded|Multiplexor|mux task|Wisp.{0,30}(closed|ended|lost)/i;
+
   class AdapterTransport {
-    constructor(inner, label) {
+    constructor(inner, label, factory) {
       this.inner = inner;
       this.label = label || "transport";
+      this.factory = factory || null;
       this.ready = false;
+      this.dead = false;
+      this.sockets = new Set();
+      AdapterTransport.all.add(this);
     }
     async init() {
       if (!this.inner.ready) await this.inner.init();
       this.ready = true;
     }
     async meta() {}
+    markDead() {
+      if (!this.factory) return;
+      this.dead = true;
+      const list = Array.from(this.sockets); this.sockets.clear();
+      for (const f of list) { try { f(1006, "Wisp connection lost"); } catch (e) {} }
+    }
+    async revive() {
+      if (this.reviving) return this.reviving;
+      this.reviving = (async () => {
+        try {
+          const n = await this.factory();
+          if (!n.ready) await n.init();
+          this.inner = n; this.dead = false;
+        } finally { this.reviving = null; }
+      })();
+      return this.reviving;
+    }
     async request(remote, method, body, headers, signal) {
       body = await normBody(body);
-      const r = await this.inner.request(remote, method, body, toObj(headers), signal);
-      return { body: r.body, headers: toPairs(r.headers), status: r.status, statusText: r.statusText };
+      const h = toObj(headers);
+      if (this.dead) await this.revive();
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const r = await this.inner.request(remote, method, body, h, signal);
+          return { body: r.body, headers: toPairs(r.headers), status: r.status, statusText: r.statusText };
+        } catch (e) {
+          const t = errText(e);
+          if (!this.factory || !MUX.test(t)) throw e;
+          this.markDead();
+          if (attempt > 0 || !(SAFE.test(method || "GET") || /\bConnect\b/.test(t))) throw e;
+          await this.revive();
+        }
+      }
     }
     connect(url, protocols, requestHeaders, onopen, onmessage, onclose, onerror) {
-      return this.inner.connect(
-        url, protocols, toObj(requestHeaders),
-        (protocol, extensions) => onopen(protocol || "", extensions || ""),
-        onmessage, onclose, onerror
-      );
+      const hdr = toObj(requestHeaders);
+      let closed = false;
+      const track = (rec) => { this.sockets.add(rec); return rec; };
+      const open = () => {
+        const rec = track((code, reason) => { if (closed) return; closed = true; onclose && onclose(code, reason); });
+        const res = this.inner.connect(
+          url, protocols, hdr,
+          (protocol, extensions) => onopen(protocol || "", extensions || ""),
+          onmessage,
+          (code, reason) => { this.sockets.delete(rec); if (!closed) { closed = true; onclose && onclose(code, reason); } },
+          (m) => { if (MUX.test(errText(m))) this.markDead(); onerror && onerror(m); }
+        );
+        if (res && typeof res.catch === "function") res.catch((e) => { if (MUX.test(errText(e))) this.markDead(); if (!closed) { closed = true; onerror && onerror(errText(e)); } });
+        return res;
+      };
+      if (!this.dead) { try { return open(); } catch (e) { if (MUX.test(errText(e))) this.markDead(); else throw e; } }
+      const p = (async () => { await this.revive(); return await open(); })();
+      p.catch((e) => { try { onerror && onerror(errText(e)); } catch (x) {} });
+      return [async (d) => (await p)[0](d), async (c, r) => (await p)[1](c, r)];
     }
   }
+  AdapterTransport.all = new Set();
+  const markAllDead = () => { for (const t of AdapterTransport.all) t.markDead(); };
 
-  const SAFE = /^(GET|HEAD|OPTIONS)$/i;
-  function retryable(method, err) {
+    function retryable(method, err) {
     if (err && err.name === "AbortError") return false;
     if (SAFE.test(method || "GET")) return true;
     /* never replay a POST unless the failure happened while connecting */
@@ -180,36 +234,55 @@
       throw err || new Error("No transport available");
     }
     async meta() {}
+    /* A host stays on the Wisp server that first served it: sites such as Cloudflare tie a challenge to the IP address,
+       so hopping to another server in the middle of a session restarts the challenge (and fails the request in flight). */
+    pinned(host) {
+      const p = this.prefs.get(host);
+      return p && p.until > Date.now() ? p.i : -1;
+    }
     order(host) {
-      const n = this.urls.length, now = Date.now();
-      const first = this.prefs.has(host) && this.prefs.get(host).until > now ? this.prefs.get(host).i : (this.cur || 0);
-      const all = [first]; for (let i = 0; i < n; i++) if (i !== first) all.push(i);
-      const good = all.filter(i => !(this.bad.get(i) > now)), bad = all.filter(i => this.bad.get(i) > now);
-      return good.concat(bad);
+      const n = this.urls.length, now = Date.now(), pin = this.pinned(host);
+      const first = pin >= 0 ? pin : (this.cur || 0);
+      const rest = []; for (let i = 0; i < n; i++) if (i !== first) rest.push(i);
+      const good = rest.filter(i => !(this.bad.get(i) > now)), bad = rest.filter(i => this.bad.get(i) > now);
+      if (pin >= 0) return [first].concat(good, bad);            /* pinned server first, whatever its health mark */
+      const all = [first].concat(rest);
+      return all.filter(i => !(this.bad.get(i) > now)).concat(all.filter(i => this.bad.get(i) > now));
     }
     async request(remote, method, body, headers, signal) {
-      const host = remote.hostname;
+      const host = remote.hostname, path = remote.pathname || "";
       body = await normBody(body);
-      const order = this.order(host);
+      const order = this.order(host), safe = SAFE.test(method || "GET"), cf = /^\/cdn-cgi\//.test(path);
       let lastErr = null, tries = 0;
-      for (let k = 0; k < order.length && tries < 6; k++) {
+      outer: for (let k = 0; k < order.length && tries < 6; k++) {
         const i = order[k];
-        try {
-          tries++;
-          const t = await Promise.race([this.get(i), new Promise((_, rej) => setTimeout(() => rej(new Error("Wisp transport start timed out")), 15000))]);
-          const r = await Promise.race([t.request(remote, method, body, headers, signal), new Promise((_, rej) => setTimeout(() => rej(new Error("Wisp request timed out (connect)")), 25000))]);
-          if (k > 0) {
-            this.prefs.set(host, { i, until: Date.now() + 10 * 60 * 1000 });
-            this.log("info", "wisp", host + " loaded through " + this.urls[i]);
+        let again = 0;
+        for (;;) {
+          const pinnedHere = this.pinned(host) === i;
+          try {
+            tries++;
+            const t = await Promise.race([this.get(i), new Promise((_, rej) => setTimeout(() => rej(new Error("Wisp transport start timed out")), 15000))]);
+            const r = await Promise.race([t.request(remote, method, body, headers, signal), new Promise((_, rej) => setTimeout(() => rej(new Error("Wisp request timed out (connect)")), 25000))]);
+            if (k > 0) this.log("info", "wisp", host + " loaded through " + this.urls[i]);
+            this.prefs.set(host, { i, until: Date.now() + 30 * 60 * 1000 });   /* pin (or refresh the pin) */
+            this.bad.delete(i);
+            return r;
+          } catch (e) {
+            lastErr = e;
+            const timeout = /timed out/i.test(errText(e));
+            if (timeout) this.bad.set(i, Date.now() + 2 * 60 * 1000);
+            const more = k < order.length - 1;
+            /* a timed-out GET is tried once more on the same server before another server (another IP) is used */
+            const sameAgain = timeout && safe && pinnedHere && again < 1;
+            /* never replay a POST/PUT after a timeout (it may already have been processed), and never move a Cloudflare
+               challenge request (/cdn-cgi/) to another IP: the challenge belongs to the IP that received it */
+            const hop = more && !(pinnedHere && cf) && (timeout ? safe : retryable(method, e));
+            this.log("warn", "wisp", this.urls[i] + " failed for " + host + ": " + errText(e).slice(0, 160) +
+              (sameAgain ? " (trying the same server once more)" : hop ? " (trying next server)" : (pinnedHere && cf ? " (kept on this server: Cloudflare challenge request)" : more && !safe && timeout ? " (not repeated: " + method + " request)" : "")));
+            if (sameAgain) { again++; continue; }
+            if (!hop) break outer;
+            break;
           }
-          this.bad.delete(i);
-          return r;
-        } catch (e) {
-          lastErr = e;
-          if (/timed out/i.test(errText(e))) this.bad.set(i, Date.now() + 2 * 60 * 1000);
-          const more = k < order.length - 1;
-          this.log("warn", "wisp", this.urls[i] + " failed for " + host + ": " + errText(e).slice(0, 160) + (more && retryable(method, e) ? " (trying next server)" : ""));
-          if (!more || !retryable(method, e)) break;
         }
       }
       throw lastErr || new Error("No transport available");
@@ -235,7 +308,7 @@
     }
   }
 
-  const api = { toPairs, toObj, normBody, retryable, AdapterTransport, FallbackTransport, WispPoolTransport };
+  const api = { MUX, markAllDead, toPairs, toObj, normBody, retryable, AdapterTransport, FallbackTransport, WispPoolTransport };
   root.HZTransport = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof self !== "undefined" ? self : globalThis);
