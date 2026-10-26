@@ -8780,7 +8780,7 @@ const SET = {
   bbar: ["bz.bbar18", "1"], dlm: ["bz.dlm", "0"], dla: ["bz.dla", "1"], auto: ["bz.auto", "0"],
   transport: ["transport2", "auto"], mode: ["mode", "auto"], hosted: ["hosted", ""], rewriter: ["rewriter", "sj"], gepool: ["gepool", "1"]
 };
-const get = k => k === "mode" ? "sj" : k === "transport" ? "auto" : k === "hosted" ? (window.__launcherHost || store.get(SET[k][0], SET[k][1])) : store.get(SET[k][0], SET[k][1]);
+const get = k => k === "mode" ? "sj" : k === "transport" ? (new URLSearchParams(location.search).get("transport") || "libcurl") : k === "hosted" ? (window.__launcherHost || store.get(SET[k][0], SET[k][1])) : store.get(SET[k][0], SET[k][1]);
 const on = k => get(k) === "1";
 
 /* ---------- logs ---------- */
@@ -9125,6 +9125,7 @@ function setPill(cls, text, title) {
 }
 
 function resolveWisp() {
+  if (window.HZ_BRIDGE) { wispOK = true; if (STATUS.text !== "Connected") setPill("ok", "Connected", "Using the launcher file's Wisp connection"); return Promise.resolve("launcher"); }
   const want = wispVal();
   if (curWisp && curWisp.want === want) return Promise.resolve(curWisp.use);
   if (qs.has("libcurl")) { curWisp = { want, use: want }; wispOK = true; setPill("ok", "Test mode"); return Promise.resolve(want); }
@@ -9265,8 +9266,59 @@ async function regSW() {
   throw new Error("The Scramjet service worker did not start. Reload the page once and try again.");
 }
 
+
+/* ---------- bridge transport (hosted copy opened by the launcher file) ----------
+   Requests and WebSockets are handed to the launcher, which owns a Wisp/libcurl connection that is known to work. */
+const BRIDGE = {
+  n: 0, w: new Map(),
+  on(m) { const h = m && this.w.get(m.id); if (h) h(m); },
+  send(m, tr) { try { parent.postMessage({ hz: 1, net: m }, "*", tr || []); } catch (e) {} }
+};
+class BridgeInner {
+  constructor() { this.ready = false; }
+  async init() { this.ready = true; }
+  async meta() {}
+  request(remote, method, body, headers, signal) {
+    return new Promise((resolve, reject) => {
+      const id = ++BRIDGE.n; let ctlr, got = false, done = false;
+      const aborted = () => Object.assign(new Error("Aborted"), { name: "AbortError" });
+      const stream = new ReadableStream({ start(c) { ctlr = c; }, cancel() { if (!done) BRIDGE.send({ op: "abort", id }); BRIDGE.w.delete(id); } });
+      const fail = e => { done = true; BRIDGE.w.delete(id); if (!got) reject(e); else { try { ctlr.error(e); } catch (x) {} } };
+      BRIDGE.w.set(id, m => {
+        if (m.op === "head") {
+          got = true; const empty = m.status === 101 || m.status === 204 || m.status === 205 || m.status === 304;
+          if (empty) { try { ctlr.close(); } catch (e) {} }
+          resolve({ body: empty ? null : stream, headers: m.headers, status: m.status, statusText: m.statusText });
+        } else if (m.op === "chunk") { try { ctlr.enqueue(new Uint8Array(m.buf)); } catch (e) {} }
+        else if (m.op === "end") { done = true; BRIDGE.w.delete(id); try { ctlr.close(); } catch (e) {} }
+        else if (m.op === "err") fail(m.abort ? aborted() : new Error(m.msg || "Request failed"));
+      });
+      if (signal) {
+        if (signal.aborted) { BRIDGE.w.delete(id); return reject(aborted()); }
+        signal.addEventListener("abort", () => { if (!done) { BRIDGE.send({ op: "abort", id }); fail(aborted()); } }, { once: true });
+      }
+      BRIDGE.send({ op: "req", id, url: remote.href, method, headers: Object.entries(headers || {}), body: body == null ? null : body });
+    });
+  }
+  connect(url, protocols, requestHeaders, onopen, onmessage, onclose, onerror) {
+    const id = ++BRIDGE.n, q = []; let open = false;
+    BRIDGE.w.set(id, m => {
+      if (m.op === "wsopen") { open = true; onopen(m.protocol || ""); q.splice(0).forEach(d => BRIDGE.send({ op: "wssend", id, data: d })); }
+      else if (m.op === "wsmsg") onmessage(m.data);
+      else if (m.op === "wsclosed") { BRIDGE.w.delete(id); onclose(m.code, m.reason); }
+      else if (m.op === "wserr") onerror(m.msg || "");
+    });
+    BRIDGE.send({ op: "ws", id, url: url.toString(), protocols: protocols || [], headers: requestHeaders || {} });
+    return [
+      async d => { if (typeof Blob !== "undefined" && d instanceof Blob) d = await d.arrayBuffer(); if (open) BRIDGE.send({ op: "wssend", id, data: d }); else q.push(d); },
+      async (c, r) => BRIDGE.send({ op: "wsclose", id, code: c, reason: r })
+    ];
+  }
+}
+
 async function makeTransport(kind, wisp) {
   if (window.HZ_TEST_TRANSPORT) return window.HZ_TEST_TRANSPORT;            /* test hook */
+  if (window.HZ_BRIDGE) { const mk = async () => new BridgeInner(), t = new window.HZTransport.AdapterTransport(await mk(), "launcher", mk); await t.init(); return t; }
   const { AdapterTransport, FallbackTransport, WispPoolTransport } = window.HZTransport, base = SJ_BASE();
   const load = async (name, w) => { const m = await import(base + "transport/" + name + ".mjs"); const mk = async () => new m.default({ wisp: w, websocket: w }); return new AdapterTransport(await mk(), name, mk); };
   const one = async w => {
@@ -9636,7 +9688,7 @@ function goHosted(t, url) {
 }
 const toHosted = m => { try { active.frame.contentWindow.postMessage(Object.assign({ hz: 1 }, m), new URL(hostedURL()).origin); } catch (e) {} };
 /* what the hosted copy needs to know; "ua: off" is what older copies call your own browser */
-const cfgObj = () => ({ wisp: wispVal(), wisplist: WLIST.join("\n"), ua: get("ident") === "real" ? "off" : get("ident"), transport: get("transport") });
+const cfgObj = () => ({ wisp: wispVal(), wisplist: WLIST.join("\n"), ua: get("ident") === "real" ? "off" : get("ident"), transport: get("transport"), bridge: 1 });
 
 /* back and forward inside a Scramjet tab: only step to entries that are really pages of this tab,
    never to the blank starting page (that is what used to throw you off the site) */
@@ -14279,7 +14331,75 @@ async function stream(t, src, d, sig) {
   } catch (e) { post(src, { t: "streamError", i: d.i, error: e.message }); }
 }
 
-return { setWisp(u){if(u&&!/^wss?:\/\/[^\s]+$/i.test(u))throw Error('Enter a ws:// or wss:// endpoint');store.set('hz.ge.wisp',u);const old=curl;curl=null;curlWisp='';try{if(old)old.close();}catch(_){}},open, closeSockets, abortAll, saveFile, keepDownload, classify: classifyResponse, isDownload, get wisp() { return curlWisp; }, newSession, ensureSession, memCache };
+/* ---------- bridge for the hosted Scramjet copy ----------
+   When this file is opened from disk and connected to a hosted site, that site's Scramjet runs in an iframe.
+   Its own Wisp connection can be blocked (school/work wifi), so it sends every request here instead and this engine
+   makes it with the same libcurl + Wisp session that already works for the built-in engine. */
+const BRS = new Map();
+function bridgeServe(src, origin, m) {
+  if (!m || typeof m !== "object") return;
+  let mine = BRS.get(src); if (!mine) { mine = new Map(); BRS.set(src, mine); }
+  const post = (x, tr) => { try { src.postMessage({ hz: 1, net: Object.assign({ id: m.id }, x) }, origin, tr || []); } catch (e) {} };
+  if (m.op === "abort") { const r = mine.get(m.id); if (r && r.ctl) r.ctl.abort(); return; }
+  if (m.op === "wssend") { const r = mine.get(m.id); try { r && r.ws && r.ws.send(m.data); } catch (e) {} return; }
+  if (m.op === "wsclose") { const r = mine.get(m.id); if (r) { r.closeReq = [m.code, m.reason]; try { r.ws && r.ws.close(m.code, m.reason); } catch (e) {} } return; }
+  if (m.op === "ws") return bridgeSocket(post, mine, m);
+  if (m.op === "req") return bridgeFetch(post, mine, m);
+}
+async function bridgeFetch(post, mine, m) {
+  const outer = new AbortController(); mine.set(m.id, { ctl: outer });
+  try {
+    await ensureSession();
+    const h = {};
+    for (const [k, v] of m.headers || []) {
+      const key = Object.keys(h).find(x => x.toLowerCase() === String(k).toLowerCase());
+      if (key) h[key] += (key.toLowerCase() === "cookie" ? "; " : ", ") + v; else h[k] = v;
+    }
+    fingerprint(m.url, { method: m.method }, h);
+    const method = m.method || "GET", safe = /^(GET|HEAD|OPTIONS)$/i.test(method);
+    const body = m.body == null || /^(GET|HEAD)$/i.test(method) ? undefined : (typeof m.body === "string" ? m.body : new Uint8Array(m.body.buffer || m.body));
+    const once = () => {
+      const c = new AbortController();
+      if (outer.signal.aborted) c.abort(); else outer.signal.addEventListener("abort", () => c.abort(), { once: true });
+      return withTimeout(curl.fetch(m.url, { method, headers: h, body, redirect: "manual", signal: c.signal }), 30000, c, hostOf(m.url));
+    };
+    let resp;
+    try { resp = await once(); }
+    catch (err) {
+      if (outer.signal.aborted || !safe || !WISP_DROP.test(err.message || "")) throw err;
+      await reconnect(outer.signal); resp = await once();
+    }
+    let pairs = [];
+    if (Array.isArray(resp.raw_headers)) pairs = resp.raw_headers.map(p => [String(p[0]), String(p[1])]);
+    else if (resp.headers && resp.headers.forEach) resp.headers.forEach((v, k) => pairs.push([k, v]));
+    post({ op: "head", status: resp.status, statusText: resp.statusText || "", headers: pairs });
+    const rd = resp.body && resp.body.getReader && resp.body.getReader();
+    outer.signal.addEventListener("abort", () => { try { rd && rd.cancel(); } catch (e) {} }, { once: true });
+    if (rd) {
+      for (;;) { const { done, value } = await rd.read(); if (done) break; const b = value.slice(); post({ op: "chunk", buf: b.buffer }, [b.buffer]); }
+    } else if (resp.arrayBuffer) {
+      const b = new Uint8Array(await resp.arrayBuffer()); if (b.length) post({ op: "chunk", buf: b.buffer }, [b.buffer]);
+    }
+    post({ op: "end" });
+  } catch (e) {
+    post({ op: "err", msg: String((e && e.message) || e || "Request failed").slice(0, 300), abort: outer.signal.aborted });
+    if (!outer.signal.aborted) glog("bridge: " + hostOf(m.url) + " failed: " + String((e && e.message) || e).slice(0, 120), "err");
+  } finally { mine.delete(m.id); }
+}
+function bridgeSocket(post, mine, m) {
+  const rec = {}; mine.set(m.id, rec);
+  ensureSession().then(() => {
+    const ws = new libcurl.WebSocket(m.url, m.protocols || [], { headers: m.headers || {} });
+    ws.binaryType = "arraybuffer"; rec.ws = ws;
+    ws.onopen = () => post({ op: "wsopen", protocol: ws.protocol || "" });
+    ws.onmessage = ev => { const d = ev.data; if (d instanceof ArrayBuffer) post({ op: "wsmsg", data: d }, [d]); else post({ op: "wsmsg", data: d }); };
+    ws.onclose = ev => { mine.delete(m.id); post({ op: "wsclosed", code: ev.code, reason: ev.reason }); };
+    ws.onerror = () => post({ op: "wserr" });
+    if (rec.closeReq) { try { ws.close(rec.closeReq[0], rec.closeReq[1]); } catch (e) {} }
+  }).catch(e => { mine.delete(m.id); post({ op: "wserr", msg: String((e && e.message) || e).slice(0, 200) }); post({ op: "wsclosed", code: 1006, reason: "Wisp connection failed" }); });
+}
+
+return { bridgeServe, setWisp(u){if(u&&!/^wss?:\/\/[^\s]+$/i.test(u))throw Error('Enter a ws:// or wss:// endpoint');store.set('hz.ge.wisp',u);const old=curl;curl=null;curlWisp='';try{if(old)old.close();}catch(_){}},open, closeSockets, abortAll, saveFile, keepDownload, classify: classifyResponse, isDownload, get wisp() { return curlWisp; }, newSession, ensureSession, memCache };
 })();
 
 async function goDirect(t,url,push,opts){return GE.open(t,url,push,opts);}
@@ -14839,7 +14959,9 @@ window.addEventListener("message", e => {
   if (!d.hz) return;
   if (EMBED) {                                   /* we are the hosted engine, driven by a launcher page */
     if (e.source !== parent) return;
+    if (d.net) { BRIDGE.on(d.net); return; }
     if (d.cfg) {
+      if (d.cfg.bridge) window.HZ_BRIDGE = true;
       if (d.cfg.wisp) store.set("wisp2", d.cfg.wisp);
       if (d.cfg.wisplist != null) wsSave(d.cfg.wisplist.split(/\s+/).map(normW).filter(isWs));
       if (d.cfg.ua) store.set("ident", d.cfg.ua === "off" ? "real" : d.cfg.ua);
@@ -14853,6 +14975,7 @@ window.addEventListener("message", e => {
   let H; try { H = new URL(hostedURL()).origin; } catch (x) { return; }
   if (e.origin !== H) return;
   if (d.log) { log(d.log.lvl, "hosted:" + d.log.src, d.log.msg); return; }
+  if (d.net) { if (tabs.some(x => x.hosted && x.frame.contentWindow === e.source)) GE.bridgeServe(e.source, e.origin, d.net); return; }
   if (d.open) return newTab(d.open, active);
   const t = tabs.find(x => x.hosted && x.frame.contentWindow === e.source); if (!t) return;
   if (d.ready) { t.ready = true; e.source.postMessage({ hz: 1, cfg: cfgObj(), go: t.pending || t.url }, H); return; }
