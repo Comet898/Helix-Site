@@ -187,7 +187,15 @@
         try { t = await this.get(order[i]); } catch (e) { lastErr = e; continue; }
         if (!t) continue;
         try {
-          const r = await t.request(remote, method, body, headers, signal);
+          /* a transport that hangs (no error, no answer) never reached the fallback before: the pool gave up first and the
+             tab showed a browser error page. The first transport now gets 12 s to answer before the other one is tried. */
+          let r;
+          if (i < order.length - 1) {
+            let tmr;
+            const guard = new Promise((_, rej) => { tmr = setTimeout(() => rej(new Error("tls handshake timed out (" + t.label + " gave no answer)")), 12000); });
+            try { r = await Promise.race([t.request(remote, method, body, headers, signal), guard]); }
+            finally { clearTimeout(tmr); }
+          } else r = await t.request(remote, method, body, headers, signal);
           if (i > 0) {
             this.prefs.set(host, { which: order[i], until: Date.now() + 10 * 60 * 1000 });
             this.log("info", "transport", host + " loaded through " + t.label + " after " + order[0] + " failed");
